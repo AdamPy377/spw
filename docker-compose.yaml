@@ -1,36 +1,42 @@
 services:
-  position-board:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: position-board
-    restart: unless-stopped
-    environment:
-      DATA_DIR: /data
-    ports:
-      - "3000:3000"
-    volumes:
-      - /mnt/das/apps/position-board:/data
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3000/api/health', timeout=3)"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+    position-board:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        container_name: position-board
+        restart: unless-stopped
+        environment:
+            DATA_DIR: /data
+        ports:
+            - "3000:3000"
+        volumes:
+            - /mnt/media/spw:/data
+        healthcheck:
+            test:
+                [
+                    "CMD",
+                    "python",
+                    "-c",
+                    "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3000/api/health', timeout=3)",
+                ]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 10s
 
-  position-board-backup:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: position-board-backup
-    restart: unless-stopped
-    command: ["python", "backup.py"]
-    environment:
-      DATA_DIR: /data
-      BACKUP_DIR: /data/backups
-      BACKUP_RETENTION_DAYS: "30"
-    volumes:
-      - /mnt/das/apps/position-board:/data
-    depends_on:
-      position-board:
-        condition: service_healthy
+    position-board-backup:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        container_name: position-board-backup
+        restart: unless-stopped
+        command: ["python", "backup.py"]
+        environment:
+            DATA_DIR: /data
+            BACKUP_DIR: /data/backups
+            BACKUP_RETENTION_DAYS: "30"
+        volumes:
+            - /mnt/media/spw:/data
+        depends_on:
+            position-board:
+                condition: service_healthy
