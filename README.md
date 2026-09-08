@@ -1,6 +1,6 @@
-# SPW v15.2
+# SPW v15.3
 
-SPW v15.2 is the Portainer/GitHub deployment version of the app. It keeps Gunicorn, Cash Management, the split JavaScript structure, and daily SQLite backups. It has no PIN/authentication layer and no Caddy/reverse-proxy service.
+SPW v15.3 is the Portainer/GitHub deployment version of the app. It keeps Gunicorn, Cash Management, the split JavaScript structure, and daily SQLite backups. It has no PIN/authentication layer and no Caddy/reverse-proxy service.
 
 ## What runs
 
