@@ -57,8 +57,9 @@ def get_db():
     # Keep SQLite in its simple rollback-journal mode. The database lives on the
     # mounted /data volume, where WAL can be noticeably slower or unreliable on
     # some NAS/DAS filesystems.
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA busy_timeout=30000")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -487,6 +488,18 @@ def delete_profile(profile_id):
 @app.errorhandler(404)
 def not_found(_):
     return jsonify({"error": "Not found"}), 404
+
+
+@app.errorhandler(sqlite3.OperationalError)
+def database_operational_error(err):
+    message = str(err)
+    app.logger.exception("SQLite operational error: %s", message)
+    lower = message.lower()
+    if "locked" in lower or "busy" in lower:
+        return jsonify({"error": "Database is busy. Please try the change again."}), 503
+    if "readonly" in lower or "read-only" in lower:
+        return jsonify({"error": "Database is read-only. Check that /mnt/media/spw is writable by Docker."}), 500
+    return jsonify({"error": f"Database error: {message}"}), 500
 
 
 @app.errorhandler(sqlite3.IntegrityError)

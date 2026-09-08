@@ -1,6 +1,6 @@
-# SPW v15.3
+# SPW v15.4
 
-SPW v15.3 is the Portainer/GitHub deployment version of the app. It keeps Gunicorn, Cash Management, the split JavaScript structure, and daily SQLite backups. It has no PIN/authentication layer and no Caddy/reverse-proxy service.
+SPW v15.4 is the Portainer/GitHub deployment version of the app. It keeps Gunicorn, Cash Management, the split JavaScript structure, and daily SQLite backups. It has no PIN/authentication layer and no Caddy/reverse-proxy service.
 
 ## What runs
 
@@ -10,7 +10,7 @@ SPW v15.3 is the Portainer/GitHub deployment version of the app. It keeps Gunico
 The database and backups remain outside the image at:
 
 ```text
-/mnt/das/apps/position-board/
+/mnt/media/spw/
 ├── shifts.db
 └── backups/
 ```
@@ -78,4 +78,4 @@ One worker is intentional while SQLite is the shared datastore; the threads stil
 
 ## Backups
 
-`backup.py` performs a consistent SQLite backup on startup and then every 24 hours. Files are stored in `/mnt/das/apps/position-board/backups` and backups older than 30 days are deleted automatically.
+`backup.py` performs a consistent SQLite backup on startup and then every 24 hours. Files are stored in `/mnt/media/spw/backups` and backups older than 30 days are deleted automatically.

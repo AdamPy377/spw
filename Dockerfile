@@ -14,6 +14,6 @@ ENV DATA_DIR=/data \
 EXPOSE 3000
 
 # SQLite is the application's shared datastore. One Gunicorn worker with
-# multiple threads gives concurrent request handling without multiplying
-# SQLite writer processes. If you later move to PostgreSQL, increase workers.
-CMD ["gunicorn", "--bind", "0.0.0.0:3000", "--workers", "1", "--threads", "4", "--timeout", "60", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
+# a single request thread serialises SQLite writes and avoids lock contention
+# on mounted storage. Gunicorn still provides production process supervision. If you later move to PostgreSQL, increase workers.
+CMD ["gunicorn", "--bind", "0.0.0.0:3000", "--workers", "1", "--threads", "1", "--timeout", "60", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
