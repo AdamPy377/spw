@@ -10,7 +10,7 @@ services:
         ports:
             - "3000:3000"
         volumes:
-            - /mnt/das/apps/position-board:/data
+            - /mnt/media/spw:/data
         healthcheck:
             test:
                 [
