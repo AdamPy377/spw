@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1, viewport-fit=cover"
+		/>
+		<title>SPW — Shift Positioning Worksheet</title>
+		<link rel="manifest" href="manifest.json" />
+		<link rel="apple-touch-icon" href="icon-192.png" />
+		<meta name="theme-color" content="#0d0f12" />
+		<link rel="stylesheet" href="styles.css" />
+	</head>
+	<body>
+		<header class="topbar">
+			<button
+				class="menu-btn"
+				id="menu-btn"
+				aria-label="Open navigation"
+				onclick="toggleNav()"
+			>
+				☰
+			</button>
+			<div class="logo">SPW</div>
+			<div class="topmeta">
+				SHIFT POSITIONING WORKSHEET — LUNCH / DINNER
+			</div>
+			<div id="connection" class="connection">Online</div>
+			<div id="autosave" class="autosave">Ready</div>
+		</header>
+		<div class="shell">
+			<nav class="nav" id="side-nav">
+				<div class="nav-mobile-head">
+					<strong>SPW MENU</strong
+					><button
+						class="nav-close"
+						onclick="closeNav()"
+						aria-label="Close navigation"
+					>
+						✕
+					</button>
+				</div>
+				<small>Run Shift</small>
+				<button
+					data-page="current"
+					class="active"
+					onclick="showPage('current')"
+				>
+					Live SPW
+				</button>
+				<button data-page="breaks" onclick="showPage('breaks')">
+					Breaks
+				</button>
+				<button data-page="tasks" onclick="showPage('tasks')">
+					Tasks
+				</button>
+				<button data-page="cash" onclick="showPage('cash')">Cash Management</button>
+				<button data-page="results" onclick="showPage('results')">
+					Shift Results
+				</button>
+				<small>Manage Shift</small>
+				<button data-page="staffing" onclick="showPage('staffing')">
+					Staffing & Coverage
+				</button>
+				<button data-page="food" onclick="showPage('food')">
+					Food Safety
+				</button>
+				<button data-page="handover" onclick="showPage('handover')">
+					Handover
+				</button>
+				<small>Plan & Team</small>
+				<button data-page="build" onclick="showPage('build')">
+					Build / Edit SPW
+				</button>
+				<button data-page="skills" onclick="showPage('skills')">
+					Crew & Skills
+				</button>
+				<small>Records</small>
+				<button data-page="history" onclick="showPage('history')">
+					Saved Shifts
+				</button>
+			</nav>
+			<div
+				class="nav-overlay"
+				id="nav-overlay"
+				onclick="closeNav()"
+			></div>
+			<main class="content">
+				<section id="page-current" class="page active"></section>
+				<section id="page-build" class="page"></section>
+				<section id="page-breaks" class="page"></section>
+				<section id="page-food" class="page"></section>
+				<section id="page-tasks" class="page"></section>
+				<section id="page-cash" class="page"></section>
+				<section id="page-staffing" class="page"></section>
+				<section id="page-results" class="page"></section>
+				<section id="page-skills" class="page"></section>
+				<section id="page-handover" class="page"></section>
+				<section id="page-history" class="page"></section>
+			</main>
+		</div>
+		<div id="modal" class="modal hidden"></div>
+		<div id="toast-stack" class="toast-stack"></div>
+		
+		<script src="js/core.js" defer></script>
+		<script src="js/spw.js" defer></script>
+		<script src="js/breaks.js" defer></script>
+		<script src="js/food-safety.js" defer></script>
+		<script src="js/profiles-history.js" defer></script>
+		<script src="js/network.js" defer></script>
+		<script src="js/live-operations.js" defer></script>
+		<script src="js/crew.js" defer></script>
+		<script src="js/tasks.js" defer></script>
+		<script src="js/skills.js" defer></script>
+		<script src="js/results-staffing.js" defer></script>
+		<script src="js/live-dashboard.js" defer></script>
+		<script src="js/cash.js" defer></script>
+		<script src="js/init.js" defer></script>
+	</body>
+</html>

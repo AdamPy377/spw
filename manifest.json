@@ -1,0 +1,23 @@
+{
+  "id": "./",
+  "name": "SPW \u2014 Shift Positioning Worksheet",
+  "short_name": "SPW",
+  "description": "Phone-first shift positioning, breaks, staffing, cash management, tasks and results.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0d0f12",
+  "theme_color": "#0d0f12",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
