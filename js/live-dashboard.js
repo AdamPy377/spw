@@ -215,13 +215,6 @@ function liveTasksCard() {
 				return steps.sort((a,b) => a.at - b.at).slice(0, limit);
 			}
 
-			function nextStepsCard() {
-				let steps = upcomingSteps();
-				if (liveViewMode.isPreview) return "";
-				if (!steps.length) return `<div class="card next-steps-card"><h2>Next steps</h2><div class="alert good"><div>No upcoming position, break, clock-off or cash events are scheduled.</div></div></div>`;
-				let now = Date.now();
-				return `<div class="card next-steps-card"><h2>Next steps</h2><div class="small muted" style="margin-bottom:8px">Upcoming position changes, breaks, clock-offs and end-of-shift cash timing.</div><div class="next-steps-list">${steps.map((s) => { let mins = Math.max(0, Math.round((s.at-now)/60000)); return `<div class="next-step"><div class="next-step-time"><strong>${new Date(s.at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}</strong><span>${mins === 0 ? 'Now' : `in ${mins}m`}</span></div><div class="next-step-copy"><span class="task-category">${esc(s.type)}</span><strong>${esc(s.text)}</strong></div>${s.action ? `<button class="btn sm" onclick="${s.run}">${esc(s.action)}</button>` : ''}</div>`; }).join("")}</div></div>`;
-			}
 
 			function nextAction() {
 				if (liveViewMode.isPreview)
@@ -271,7 +264,6 @@ function liveTasksCard() {
 						: "") +
 					`<div class="card live-positioning-overview"><div class="row"><div><h2>Positioning overview</h2><div class="small muted">Same positioning layout as View SPW, already loaded for this shift.</div></div><span style="flex:1"></span><button class="btn primary" onclick="openLoadedPositioning()">View / edit positioning</button></div><div style="margin-top:10px">${historyWorksheet(spw)}</div></div>` +
 					`<div class="live-positioning-mobile-link"><button class="btn primary" onclick="openLoadedPositioning()">View / edit positioning</button></div>` +
-					nextStepsCard() +
 					liveBoard(spw) +
 					liveFoodSafetyCard() +
 					liveTasksCard();

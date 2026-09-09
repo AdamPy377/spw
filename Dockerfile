@@ -5,7 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py backup.py index.html styles.css manifest.json sw.js icon-192.png icon-512.png ./
+COPY app.py backup.py notifications.py index.html styles.css manifest.json sw.js icon-192.png icon-512.png ./
 COPY js ./js
 
 ENV DATA_DIR=/data \

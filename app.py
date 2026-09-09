@@ -2,12 +2,17 @@ import os
 import json
 import sqlite3
 import re
+import base64
 from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 
 DATA_DIR = os.environ.get("DATA_DIR", "/data")
 DB_PATH = os.path.join(DATA_DIR, "shifts.db")
 APP_DIR = os.path.dirname(__file__)
+VAPID_PRIVATE_PATH = os.environ.get("VAPID_PRIVATE_KEY", os.path.join(DATA_DIR, "vapid_private.pem"))
+VAPID_PUBLIC_PATH = os.environ.get("VAPID_PUBLIC_KEY_FILE", os.path.join(DATA_DIR, "vapid_public.txt"))
 
 app = Flask(__name__, static_folder=APP_DIR, static_url_path="")
 
@@ -77,6 +82,34 @@ def get_db():
     conn.execute("PRAGMA busy_timeout=5000")
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _base64url(raw):
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+
+def ensure_vapid_keys():
+    """Create one persistent Web Push VAPID key pair for this SPW install."""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    if os.path.exists(VAPID_PRIVATE_PATH) and os.path.exists(VAPID_PUBLIC_PATH):
+        return
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    public_numbers = private_key.public_key().public_numbers()
+    public_raw = b"\x04" + public_numbers.x.to_bytes(32, "big") + public_numbers.y.to_bytes(32, "big")
+    private_tmp = VAPID_PRIVATE_PATH + ".tmp"
+    public_tmp = VAPID_PUBLIC_PATH + ".tmp"
+    with open(private_tmp, "wb") as handle:
+        handle.write(private_pem)
+    os.chmod(private_tmp, 0o600)
+    with open(public_tmp, "w", encoding="utf-8") as handle:
+        handle.write(_base64url(public_raw))
+    os.replace(private_tmp, VAPID_PRIVATE_PATH)
+    os.replace(public_tmp, VAPID_PUBLIC_PATH)
 
 
 def add_missing_columns(conn, table, columns):
@@ -180,6 +213,29 @@ def init_db():
     add_missing_columns(conn, "crew_profiles", {
         "flags_json": "TEXT DEFAULT '{}'",
     })
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            endpoint TEXT NOT NULL UNIQUE,
+            p256dh TEXT NOT NULL,
+            auth TEXT NOT NULL,
+            user_agent TEXT DEFAULT '',
+            created_at TEXT DEFAULT ''
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS push_notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subscription_id INTEGER NOT NULL,
+            spw_id INTEGER,
+            crew_id INTEGER NOT NULL,
+            break_field TEXT NOT NULL,
+            break_at TEXT NOT NULL,
+            sent_at TEXT DEFAULT '',
+            UNIQUE(subscription_id, crew_id, break_field, break_at),
+            FOREIGN KEY(subscription_id) REFERENCES push_subscriptions(id) ON DELETE CASCADE
+        )
+    """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_crew_spw_id ON crew(spw_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_spw_date_type ON spw(shift_date, shift_type)")
     # The live database now resides on local disk, so WAL is appropriate and
@@ -193,6 +249,7 @@ def init_db():
     conn.close()
 
 
+ensure_vapid_keys()
 init_db()
 
 
@@ -204,6 +261,45 @@ def health():
 @app.route("/")
 def index():
     return send_from_directory(APP_DIR, "index.html")
+
+
+@app.route("/api/push/public-key")
+def push_public_key():
+    ensure_vapid_keys()
+    with open(VAPID_PUBLIC_PATH, "r", encoding="utf-8") as handle:
+        return jsonify({"public_key": handle.read().strip()})
+
+
+@app.route("/api/push/subscribe", methods=["POST", "DELETE"])
+def push_subscribe():
+    data = request.get_json() or {}
+    endpoint = str(data.get("endpoint") or "").strip()
+    if request.method == "DELETE":
+        if not endpoint:
+            return jsonify({"error": "endpoint required"}), 400
+        conn = get_db()
+        conn.execute("DELETE FROM push_subscriptions WHERE endpoint=?", (endpoint,))
+        conn.commit()
+        conn.close()
+        return "", 204
+    keys = data.get("keys") if isinstance(data.get("keys"), dict) else {}
+    p256dh = str(keys.get("p256dh") or "").strip()
+    auth = str(keys.get("auth") or "").strip()
+    if not endpoint or not p256dh or not auth:
+        return jsonify({"error": "Invalid push subscription"}), 400
+    conn = get_db()
+    conn.execute(
+        """
+        INSERT INTO push_subscriptions (endpoint, p256dh, auth, user_agent, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(endpoint) DO UPDATE SET
+            p256dh=excluded.p256dh, auth=excluded.auth, user_agent=excluded.user_agent
+        """,
+        (endpoint, p256dh, auth, request.headers.get("User-Agent", "")[:500], datetime.now().isoformat(timespec="seconds")),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/spw/list")
@@ -523,7 +619,7 @@ def database_operational_error(err):
     if "locked" in lower or "busy" in lower:
         return jsonify({"error": "Database is busy. Please try the change again."}), 503
     if "readonly" in lower or "read-only" in lower:
-        return jsonify({"error": "Database is read-only. Check that /mnt/media/spw is writable by Docker."}), 500
+        return jsonify({"error": "Database is read-only. Check that /home/adam/docker/spw is writable by Docker."}), 500
     return jsonify({"error": f"Database error: {message}"}), 500
 
 

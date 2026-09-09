@@ -375,9 +375,7 @@
 				if (target.minimum === 0 && !primary.length) score = Math.max(score, capableFlex.length ? 95 : 82);
 				if (effectiveCapable >= target.strong && roleScore >= 95 && avgStrength >= 78) score = Math.max(score,85);
 				let state = score >= 80 ? "strong" : score >= 55 ? "thin" : "critical";
-				let head = `${capable}/${primary.length} primary capable${capableFlex.length ? ` + ${capableFlex.length} flex` : ""}`;
-				let targetText = target.minimum === 0 ? "no fixed crew expected" : `target ${target.minimum} min, ${target.preferred} preferred`;
-				let detail = `${head} · ${targetText}${ctx.sales ? ` · $${Math.round(ctx.sales)}/h sales` : ""}${target.note ? ` · ${target.note}` : ""}`;
+				let detail = `Target ${target.minimum} · Preferred ${target.preferred}`;
 				return { score, state, capable, flex: capableFlex.length, total: primary.length, target, detail, sales: ctx.sales, onDuty: ctx.onDuty };
 			}
 

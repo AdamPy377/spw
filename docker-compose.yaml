@@ -7,10 +7,12 @@ services:
     restart: unless-stopped
     environment:
       DATA_DIR: /data
+      APP_TIMEZONE: Australia/Melbourne
+      VAPID_PRIVATE_KEY: /data/vapid_private.pem
+      VAPID_PUBLIC_KEY_FILE: /data/vapid_public.txt
     ports:
       - "3000:3000"
     volumes:
-      # Live database: local disk for low-latency SQLite access.
       - /home/adam/docker/spw:/data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3000/api/health', timeout=3)"]
@@ -18,6 +20,25 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  position-board-notifications:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: position-board-notifications
+    restart: unless-stopped
+    command: ["python", "notifications.py"]
+    environment:
+      DATA_DIR: /data
+      APP_TIMEZONE: Australia/Melbourne
+      VAPID_PRIVATE_KEY: /data/vapid_private.pem
+      VAPID_SUBJECT: mailto:spw@example.com
+      NOTIFICATION_CHECK_SECONDS: "30"
+    volumes:
+      - /home/adam/docker/spw:/data
+    depends_on:
+      position-board:
+        condition: service_healthy
 
   position-board-backup:
     build:
@@ -31,7 +52,6 @@ services:
       BACKUP_DIR: /backups
       BACKUP_RETENTION_DAYS: "30"
     volumes:
-      # Read the live DB from local disk, but write backups to network storage.
       - /home/adam/docker/spw:/data:ro
       - /mnt/media/spw/backups:/backups
     depends_on:

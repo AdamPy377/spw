@@ -1,97 +1,58 @@
-# SPW v15.7
+# SPW v15.8
 
-SPW v15.7 keeps the fast local SQLite/Gunicorn setup from v15.5 and improves live operations: demand-aware area strength, a loaded positioning overview on Live SPW, chronological next steps, corrected break ordering, and Cash Management becoming due only in the final hour of the shift.
+This release keeps the working storage/runtime setup from v15.7:
 
-## Storage layout
+- Live SQLite database: `/home/adam/docker/spw/shifts.db`
+- Network backups: `/mnt/media/spw/backups/`
+- Gunicorn: 1 worker, 4 threads
+- SQLite busy timeout: 5 seconds
 
-The live database now lives on the Docker host's local disk:
+## Changes in v15.8
 
-```text
-/home/adam/docker/spw/
-└── shifts.db
-```
+- Removed the entire **Next steps** list from Live SPW. The single **Next action** card in the command centre remains.
+- Simplified area coverage detail to only show `Target X · Preferred Y`.
+- Drawer counts can now be **edited or deleted** individually.
+- Safe counts are now stored as count history and can be **edited or deleted** individually. Existing safe count/recount data is migrated in the frontend automatically when the shift is loaded.
+- Added **Waste Count** as a standard check-off task on Day, Night and Overnight shifts.
+- Added optional **break push notifications**, sent once approximately 5 minutes before each scheduled meal/rest break.
+- Added a dedicated `position-board-notifications` worker container. It checks the local SQLite database every 30 seconds and only sends break reminders.
 
-Daily backups remain on network storage:
+## Break notification setup
 
-```text
-/mnt/media/spw/backups/
-└── shifts-YYYYMMDD-HHMMSS.db
-```
+SPW generates and stores its own persistent VAPID Web Push key pair in:
 
-The app container mounts `/home/adam/docker/spw` as `/data`. The backup container mounts that same location read-only as `/data` and mounts `/mnt/media/spw/backups` as `/backups`.
+- `/home/adam/docker/spw/vapid_private.pem`
+- `/home/adam/docker/spw/vapid_public.txt`
 
-## Gunicorn
+No manual key generation is required.
 
-SPW starts with one Gunicorn worker and four threads:
+Open the **Break Dashboard** and press **Enable** under Break notifications on each device that should receive reminders.
 
-```text
-gunicorn --bind 0.0.0.0:3000 --worker-class gthread --workers 1 --threads 4 --timeout 60 app:app
-```
+### HTTPS requirement
 
-One worker is intentional for SQLite. Four threads allow overlapping requests without creating multiple independent Python processes that can increase SQLite write contention. SQLite uses WAL mode on the local disk for better concurrent read/write behaviour.
+Browser/Web Push requires a secure HTTPS origin (except `localhost`). If you currently open SPW as `http://SERVER-IP:3000`, the rest of SPW will work normally, but push notifications cannot be enabled from that URL. You will need to expose SPW through HTTPS before device push notifications can work.
 
-The SQLite lock/busy timeout is 5 seconds (`timeout=5`, `PRAGMA busy_timeout=5000`). Gunicorn's separate request timeout remains 60 seconds.
+On iPhone/iPad, Web Push is intended for an installed Home Screen PWA. Install SPW to the Home Screen, open it from there, then enable notifications.
 
-## Updating from v15.5
+## Updating from v15.7
 
-There is **no database move required** for v15.7. Keep the live database and backup paths exactly as they are:
-
-```text
-Live DB: /home/adam/docker/spw/shifts.db
-Backups: /mnt/media/spw/backups/
-```
-
-The Compose mounts remain:
-
-```text
-/home/adam/docker/spw -> /data
-/mnt/media/spw/backups -> /backups
-```
-
-### Live operations changes
-
-- Area strength now considers position skill/capability, number of capable people in the area, current hourly sales, time of day and minimum/preferred staffing.
-- McCafé expects 2 capable people minimum in the morning, prefers 3, and treats 4 capable people as very strong; after midday it still expects at least 2.
-- Drive Thru requires distinct capable coverage for an order-taking/cash role and a runner/presenter/service role.
-- In Restaurant can be strong with one highly capable person during non-extreme demand, while two remains preferred.
-- Live SPW now includes the same positioning-style worksheet used by View SPW plus a one-tap View / edit positioning button.
-- A Next steps list shows upcoming clock-ons, breaks, clock-offs and the start of the cash-management window.
-- Break Dashboard sorts overdue breaks newest-first, then due/current, then the next upcoming breaks chronologically.
-- Cash Management is no longer an all-shift urgent alert; it becomes due in the final hour of the shift.
-
-## Updating through GitHub + Portainer
-
-Replace the repository files with this version, then run:
+Replace the files in your local Git repository with this release, then run:
 
 ```bash
 git add -A
-git commit -m "SPW v15.7 - live operations improvements"
+git commit -m "SPW v15.8 - cash editing, waste count and break notifications"
 git push
 ```
 
-In Portainer open **Stacks → SPW → Pull and redeploy** and make sure the image is rebuilt.
+Then in Portainer:
 
-SPW remains available on:
+1. Open **Stacks**.
+2. Open the SPW stack.
+3. Choose **Pull and redeploy**.
+4. Confirm these containers are running:
+   - `position-board`
+   - `position-board-notifications`
+   - `position-board-backup`
+5. Close and reopen the SPW PWA/browser tab once so service-worker cache v15.8 is active.
 
-```text
-http://DOCKER-HOST-IP:3000
-```
-
-## Backups
-
-`backup.py` creates a consistent SQLite backup when the backup container starts and then every 24 hours. Backups older than 30 days are removed automatically.
-
-
-## v15.7 mobile positioning change
-- Desktop Live SPW keeps the full Positioning overview.
-- Mobile Live SPW hides the embedded positioning worksheet and shows only a full-width View / edit positioning button, restoring the cleaner mobile dashboard layout.
-
-
-## v15.7 changes
-
-- SPW logo returns directly to Live SPW.
-- Drawer counts are additive cycles: each new count keeps the prior count and adds only that cycle's excess over the $200 float to the cumulative deposit.
-- McCafé staffing expects 2–3 capable crew in the morning, 1 after noon under normal demand, and no fixed café crew after 7pm (manager/flex coverage expected).
-- Crew can have scheduled Position blocks and concurrent Flex coverage entries with optional time windows. Live area strength uses the active position plus capable flex support.
-- Live Next steps no longer includes clock-ons; scheduled position changes are included instead.
-- The separate Actionable alerts card was removed from Live SPW.
+There is no manual database move and the live database path must remain `/home/adam/docker/spw`.

@@ -2331,3 +2331,23 @@
     .assignment-row .assignment-wide { grid-column: 1 / -1; }
     .assignment-row .assignment-remove { grid-column: 1 / -1; }
 }
+
+/* v15.8 — editable cash histories + break push notifications */
+.cash-history-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  align-items: center;
+}
+#break-notification-card .row {
+  align-items: center;
+}
+@media (max-width: 760px) {
+  .cash-history-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+  #break-notification-card .row > div:first-child {
+    flex-basis: 100%;
+  }
+}
