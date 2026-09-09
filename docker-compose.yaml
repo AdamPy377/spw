@@ -10,7 +10,8 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - /mnt/media/spw:/data
+      # Live database: local disk for low-latency SQLite access.
+      - /home/adam/docker/spw:/data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3000/api/health', timeout=3)"]
       interval: 30s
@@ -27,10 +28,12 @@ services:
     command: ["python", "backup.py"]
     environment:
       DATA_DIR: /data
-      BACKUP_DIR: /data/backups
+      BACKUP_DIR: /backups
       BACKUP_RETENTION_DAYS: "30"
     volumes:
-      - /mnt/media/spw:/data
+      # Read the live DB from local disk, but write backups to network storage.
+      - /home/adam/docker/spw:/data:ro
+      - /mnt/media/spw/backups:/backups
     depends_on:
       position-board:
         condition: service_healthy

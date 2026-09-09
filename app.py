@@ -54,12 +54,12 @@ DEFAULT_GOALS = {
 
 def get_db():
     os.makedirs(DATA_DIR, exist_ok=True)
-    # Keep SQLite in its simple rollback-journal mode. The database lives on the
-    # mounted /data volume, where WAL can be noticeably slower or unreliable on
-    # some NAS/DAS filesystems.
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    # The live SQLite database is stored on local host storage. A short busy
+    # timeout prevents transient write contention from becoming user-visible
+    # errors while still failing quickly if something is genuinely stuck.
+    conn = sqlite3.connect(DB_PATH, timeout=5)
     conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute("PRAGMA busy_timeout=30000")
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -165,10 +165,11 @@ def init_db():
     })
     conn.execute("CREATE INDEX IF NOT EXISTS idx_crew_spw_id ON crew(spw_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_spw_date_type ON spw(shift_date, shift_type)")
-    # v11 enabled WAL. Convert existing databases back to the normal DELETE
-    # journal so upgrades do not remain stuck in WAL mode on mounted storage.
+    # The live database now resides on local disk, so WAL is appropriate and
+    # improves read/write concurrency for Gunicorn's threaded requests.
     try:
-        conn.execute("PRAGMA journal_mode=DELETE")
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
     except sqlite3.DatabaseError:
         pass
     conn.commit()

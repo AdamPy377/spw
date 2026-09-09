@@ -13,7 +13,7 @@ ENV DATA_DIR=/data \
 
 EXPOSE 3000
 
-# SQLite is the application's shared datastore. One Gunicorn worker with
-# a single request thread serialises SQLite writes and avoids lock contention
-# on mounted storage. Gunicorn still provides production process supervision. If you later move to PostgreSQL, increase workers.
-CMD ["gunicorn", "--bind", "0.0.0.0:3000", "--workers", "1", "--threads", "1", "--timeout", "60", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
+# The live SQLite database is mounted from local host storage. One worker keeps
+# SQLite writes within a single process; four threads allow concurrent requests.
+# WAL mode in app.py supports concurrent readers while a write is in progress.
+CMD ["gunicorn", "--bind", "0.0.0.0:3000", "--worker-class", "gthread", "--workers", "1", "--threads", "4", "--timeout", "60", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
