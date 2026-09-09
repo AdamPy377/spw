@@ -247,28 +247,90 @@
 					: Math.round(f.score * 20);
 				return { score: pct, label: `${f.score}/5` };
 			}
+			function areaDemandContext(spw = currentSpw) {
+				let hi = currentHourIndex(spw);
+				let hour = new Date().getHours();
+				let sales = hi >= 0 ? salesValueForHour(spw, hi) : 0;
+				let onDuty = 0;
+				if (hi >= 0) {
+					let h = hourStarts(spw)[hi];
+					onDuty = (spw?.crew || []).filter((c) => {
+						let st = mins(c.shift_start), d = duration(c.shift_start, c.shift_end);
+						if (st == null || !d) return false;
+						while (st < h - 360) st += 1440;
+						return st < h + 60 && st + d > h;
+					}).length;
+				}
+				let demand = sales >= 2600 ? 3 : sales >= 1900 ? 2 : sales >= 1200 ? 1 : 0;
+				return { hi, hour, sales, onDuty, demand };
+			}
+
+			function areaStaffingTargets(area, ctx) {
+				let target = { minimum: 1, preferred: 1, strong: 2, roleGroups: [] };
+				if (area === "McCafé") {
+					if (ctx.hour < 12) target = { minimum: 2, preferred: 3, strong: 4, roleGroups: [] };
+					else target = { minimum: 2, preferred: 2, strong: 3, roleGroups: [] };
+					if (ctx.demand >= 2) { target.preferred += 1; target.strong += 1; }
+				} else if (area === "Drive Thru") {
+					target = { minimum: 2, preferred: 3 + (ctx.demand >= 2 ? 1 : 0), strong: 4 + (ctx.demand >= 3 ? 1 : 0), roleGroups: [
+						["OT Lane 1 / Cash", "OT Lane 2 / Flex", "Presenter / OT Lane 2", "Cashier / Flex"],
+						["Assembler / Presenter", "Presenter / OT Lane 2", "Coordinator", "Expeditor"],
+					] };
+				} else if (area === "In Restaurant") {
+					target = { minimum: 1, preferred: 2, strong: ctx.demand >= 2 ? 3 : 2, roleGroups: [] };
+				} else if (area === "Kitchen") {
+					target = { minimum: 3, preferred: 3 + ctx.demand, strong: 4 + ctx.demand, roleGroups: [] };
+				} else if (area === "McDelivery") {
+					target = { minimum: 1, preferred: ctx.demand >= 2 ? 2 : 1, strong: ctx.demand >= 2 ? 3 : 2, roleGroups: [] };
+				} else if (area === "Beverage Cell") {
+					target = { minimum: 1, preferred: ctx.demand >= 2 ? 2 : 1, strong: 2, roleGroups: [] };
+				}
+				return target;
+			}
+
 			function areaCoverage(area, spw = currentSpw) {
-				let essentials = ESSENTIAL_POSITIONS[area] || [],
-					crew = (spw?.crew || []).filter(
-						(c) => c.area === area && c.station,
-					);
-				if (!essentials.length)
-					return {
-						score: crew.length ? 75 : 0,
-						state: crew.length ? "thin" : "critical",
-					};
-				let scores = essentials.map((pos) => {
-					let member = crew.find((c) => c.station === pos);
-					if (!member) return 0;
-					let strength = positionStrength(member);
-					return strength.score;
-				});
-				let score = Math.round(
-					scores.reduce((a, b) => a + b, 0) / scores.length,
-				);
-				let state =
-					score >= 80 ? "strong" : score >= 55 ? "thin" : "critical";
-				return { score, state };
+				let crew = (spw?.crew || []).filter((c) => c.area === area && c.station);
+				let ctx = areaDemandContext(spw), target = areaStaffingTargets(area, ctx);
+				let strengths = crew.map(positionStrength);
+				let isCapable = (c) => {
+					let fit = assignedSkillFit(c);
+					return !!fit?.profile && fit.score >= fit.min;
+				};
+				let capable = crew.filter(isCapable).length;
+				let avgStrength = strengths.length ? strengths.reduce((s, x) => s + x.score, 0) / strengths.length : 0;
+
+				let headcountScore = target.preferred ? Math.min(100, (capable / target.preferred) * 100) : 100;
+				if (capable < target.minimum) headcountScore *= 0.55;
+
+				let roleScore = 100;
+				if (target.roleGroups.length) {
+					let eligibleByRole = target.roleGroups.map((group) => crew.filter((c) => group.includes(c.station) && isCapable(c)).map((c) => c.id));
+					let matched = 0, used = new Set();
+					for (let ids of eligibleByRole.sort((a,b) => a.length-b.length)) {
+						let id = ids.find((x) => !used.has(x));
+						if (id != null) { used.add(id); matched++; }
+					}
+					roleScore = (matched / target.roleGroups.length) * 100;
+				}
+
+				let essentials = ESSENTIAL_POSITIONS[area] || [];
+				let essentialScore = 100;
+				if (essentials.length && !target.roleGroups.length) {
+					let scores = essentials.map((pos) => {
+						let member = crew.find((c) => c.station === pos);
+						return member ? positionStrength(member).score : 0;
+					});
+					essentialScore = scores.reduce((a,b) => a+b, 0) / scores.length;
+				}
+
+				let score = Math.round(0.42 * headcountScore + 0.28 * avgStrength + 0.18 * roleScore + 0.12 * essentialScore);
+				if (!crew.length) score = 0;
+				if (capable < target.minimum || roleScore < 100) score = Math.min(score, 54);
+				if (area === "In Restaurant" && capable >= 1 && avgStrength >= 85 && ctx.demand < 3) score = Math.max(score, 80);
+				if (capable >= target.strong && roleScore === 100 && avgStrength >= 78) score = Math.max(score, 85);
+				let state = score >= 80 ? "strong" : score >= 55 ? "thin" : "critical";
+				let detail = `${capable}/${crew.length} capable · target ${target.minimum} min, ${target.preferred} preferred${ctx.sales ? ` · $${Math.round(ctx.sales)}/h sales` : ""}`;
+				return { score, state, capable, total: crew.length, target, detail, sales: ctx.sales, onDuty: ctx.onDuty };
 			}
 			function isAreaLeader(c) {
 				return (
@@ -316,7 +378,7 @@
 						);
 						if (!ms.length) return "";
 						let cov = areaCoverage(a.key, spw);
-						return `<div class="live-area"><div class="live-title"><span>${a.key}</span><span class="area-score ${cov.state}">${cov.score}/100 · ${cov.state === "strong" ? "Strong" : cov.state === "thin" ? "Thin" : "Critical"}</span></div>${ms
+						return `<div class="live-area"><div class="live-title"><span>${a.key}<small class="area-demand-detail">${esc(cov.detail)}</small></span><span class="area-score ${cov.state}" title="${esc(cov.detail)}">${cov.score}/100 · ${cov.state === "strong" ? "Strong" : cov.state === "thin" ? "Thin" : "Critical"}</span></div>${ms
 							.map((c) => {
 								let strength = positionStrength(c),
 									leader = isAreaLeader(c);
@@ -331,8 +393,8 @@
 				if (!spw) return [];
 				let out = [],
 					now = Date.now();
-				const cashStatus = cashCompletionStatus(spw);
-				if (!cashStatus.complete) out.push({ severity: "urgent", text: "Critical: drawer counts and safe count are still outstanding.", action: "Cash Management", run: `showPage('cash')`, rank: 2 });
+				const cashStatus = cashCompletionStatus(spw), cashDue = cashDueState(spw);
+				if (!cashStatus.complete && (cashDue.due || cashDue.overdue)) out.push({ severity: "urgent", text: cashDue.overdue ? "Critical: Cash Management is overdue." : `Cash Management is due in the final hour (${cashDue.minutesToEnd}m to shift end).`, action: "Cash Management", run: `showPage('cash')`, rank: 2 });
 				else if (cashStatus.hasVariance) out.push({ severity: "warn", text: `Cash Management has a variance of ${formatMoney(cashStatus.totalVariance)}.`, action: "Review cash", run: `showPage('cash')`, rank: 6 });
 				for (let c of spw.crew) {
 					if (!c.station)
@@ -403,7 +465,7 @@
 					)
 						out.push({
 							severity: "urgent",
-							text: `${a.key} coverage is critical (${cov.score}/100).`,
+							text: `${a.key} coverage is critical (${cov.score}/100) — ${cov.detail}.`,
 							action: "Review",
 							run: `showPage('build')`,
 							rank: 6,
@@ -414,7 +476,7 @@
 					)
 						out.push({
 							severity: "warn",
-							text: `${a.key} coverage is thin (${cov.score}/100).`,
+							text: `${a.key} coverage is thin (${cov.score}/100) — ${cov.detail}.`,
 							action: "Review",
 							run: `showPage('build')`,
 							rank: 30,

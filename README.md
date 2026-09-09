@@ -1,6 +1,6 @@
-# SPW v15.5
+# SPW v15.6
 
-SPW v15.5 moves the live SQLite database off network storage and increases Gunicorn request concurrency while keeping daily backups on `/mnt/media/spw`.
+SPW v15.6 keeps the fast local SQLite/Gunicorn setup from v15.5 and improves live operations: demand-aware area strength, a loaded positioning overview on Live SPW, chronological next steps, corrected break ordering, and Cash Management becoming due only in the final hour of the shift.
 
 ## Storage layout
 
@@ -32,48 +32,32 @@ One worker is intentional for SQLite. Four threads allow overlapping requests wi
 
 The SQLite lock/busy timeout is 5 seconds (`timeout=5`, `PRAGMA busy_timeout=5000`). Gunicorn's separate request timeout remains 60 seconds.
 
-## One-time migration from v15.4
+## Updating from v15.5
 
-Before deploying v15.5, stop the current SPW stack so the database cannot change while it is copied.
-
-On the Docker host:
-
-```bash
-sudo mkdir -p /home/adam/docker/spw
-sudo mkdir -p /mnt/media/spw/backups
-sudo cp -a /mnt/media/spw/shifts.db /home/adam/docker/spw/shifts.db
-sudo ls -lh /home/adam/docker/spw/shifts.db
-```
-
-Do not delete `/mnt/media/spw/shifts.db` yet. Keep it as an extra fallback until the new deployment is confirmed working.
-
-Then update the GitHub repository and use Portainer **Pull and redeploy**.
-
-After deployment, verify the running container sees the local database:
-
-```bash
-docker exec position-board ls -lh /data/shifts.db
-docker inspect position-board --format '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}'
-```
-
-The mount output should include:
+There is **no database move required** for v15.6. Keep the live database and backup paths exactly as they are:
 
 ```text
-/home/adam/docker/spw -> /data
+Live DB: /home/adam/docker/spw/shifts.db
+Backups: /mnt/media/spw/backups/
 ```
 
-Verify the backup container mounts both locations:
-
-```bash
-docker inspect position-board-backup --format '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}'
-```
-
-It should include:
+The Compose mounts remain:
 
 ```text
 /home/adam/docker/spw -> /data
 /mnt/media/spw/backups -> /backups
 ```
+
+### Live operations changes
+
+- Area strength now considers position skill/capability, number of capable people in the area, current hourly sales, time of day and minimum/preferred staffing.
+- McCafé expects 2 capable people minimum in the morning, prefers 3, and treats 4 capable people as very strong; after midday it still expects at least 2.
+- Drive Thru requires distinct capable coverage for an order-taking/cash role and a runner/presenter/service role.
+- In Restaurant can be strong with one highly capable person during non-extreme demand, while two remains preferred.
+- Live SPW now includes the same positioning-style worksheet used by View SPW plus a one-tap View / edit positioning button.
+- A Next steps list shows upcoming clock-ons, breaks, clock-offs and the start of the cash-management window.
+- Break Dashboard sorts overdue breaks newest-first, then due/current, then the next upcoming breaks chronologically.
+- Cash Management is no longer an all-shift urgent alert; it becomes due in the final hour of the shift.
 
 ## Updating through GitHub + Portainer
 
@@ -81,7 +65,7 @@ Replace the repository files with this version, then run:
 
 ```bash
 git add -A
-git commit -m "SPW v15.5 - local database and threaded Gunicorn"
+git commit -m "SPW v15.6 - live operations improvements"
 git push
 ```
 

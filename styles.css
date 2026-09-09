@@ -2222,3 +2222,67 @@
     .safe-grid { grid-template-columns: 1fr 1fr; }
     .cash-history { grid-template-columns: 1fr 1fr; }
 }
+
+/* v15.6 — dynamic area demand, live positioning overview and next steps */
+.area-demand-detail {
+	display: block;
+	margin-top: 2px;
+	font-size: 9px;
+	font-weight: 650;
+	color: #aeb4bd;
+	letter-spacing: 0;
+}
+.metric-note {
+	margin-top: 5px;
+	font-size: 10px;
+	line-height: 1.35;
+	color: var(--muted);
+}
+.live-positioning-overview .worksheet {
+	margin-top: 8px;
+}
+.next-steps-list {
+	display: grid;
+	gap: 7px;
+}
+.next-step {
+	display: grid;
+	grid-template-columns: 92px minmax(0, 1fr) auto;
+	gap: 10px;
+	align-items: center;
+	padding: 9px 10px;
+	border: 1px solid #30343b;
+	border-radius: 8px;
+	background: #20242b;
+}
+.next-step-time strong,
+.next-step-time span,
+.next-step-copy strong {
+	display: block;
+}
+.next-step-time strong {
+	font-size: 14px;
+}
+.next-step-time span {
+	font-size: 10px;
+	color: var(--muted);
+	margin-top: 2px;
+}
+.cash-critical.not-due {
+	border-left-color: #4ea1ff;
+}
+@media (max-width: 760px) {
+	.next-step {
+		grid-template-columns: 78px minmax(0, 1fr);
+	}
+	.next-step .btn {
+		grid-column: 1 / -1;
+		width: 100%;
+	}
+	.live-positioning-overview > .row {
+		align-items: stretch;
+	}
+	.live-positioning-overview > .row .btn {
+		width: 100%;
+	}
+}

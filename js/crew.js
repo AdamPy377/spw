@@ -273,7 +273,7 @@ function openCrewModal(id = null) {
 					`<div class="card"><div class="row"><div class="field"><label>Shift Manager</label><input id="manager" value="${esc(currentSpw.shift_manager || "")}" oninput="syncHeaderFromDom();scheduleSave()"></div><button class="btn primary" onclick="openCrewModal()">+ Add crew</button></div></div><div class="card"><h2>Sales / Crew Hours / SPCH</h2><div class="small muted" style="margin-bottom:8px">Actual sales are best entered on Shift Results. Current hour is highlighted.</div><div id="sales-zone">${salesTable(currentSpw, true)}</div></div>${worksheet(currentSpw, true)}<div class="card"><h2>Area coverage</h2><div class="dashboard-grid">${AREA_DEFS.map(
 						(a) => {
 							let c = areaCoverage(a.key);
-							return `<div class="metric"><div class="n">${c.score}</div><div class="l">${a.key} · ${c.state}</div></div>`;
+							return `<div class="metric"><div class="n">${c.score}</div><div class="l">${a.key} · ${c.state}</div><div class="metric-note">${esc(c.detail)}</div></div>`;
 						},
 					).join(
 						"",

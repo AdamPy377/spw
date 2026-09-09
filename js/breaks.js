@@ -97,27 +97,27 @@
 						["rest1_sent", "rest1_time", "Rest"],
 						["rest2_sent", "rest2_time", "Rest"],
 					].forEach(([f, t, l]) => {
-						if (c[t])
+						if (c[t]) {
+							let when = crewMomentForTime(c, c[t]);
 							items.push({
 								c,
 								f,
 								t: c[t],
 								label: l,
 								state: breakState(c, c[t], f),
-								rel: relativeMins(c[t], c.shift_start) ?? 9999,
+								at: when ? when.getTime() : Number.MAX_SAFE_INTEGER,
 							});
+						}
 					});
 				}
 				items.sort((a, b) => {
-					let rank = (s) =>
-						s === "late"
-							? 0
-							: s === "due"
-								? 1
-								: s === "sent"
-									? 3
-									: 2;
-					return rank(a.state) - rank(b.state) || a.rel - b.rel;
+					let rank = (s) => s === "late" ? 0 : s === "due" ? 1 : s === "sent" ? 3 : 2;
+					let ra = rank(a.state), rb = rank(b.state);
+					if (ra !== rb) return ra - rb;
+					// For overdue breaks, show the most recently missed break first.
+					// For due/upcoming breaks, show the next chronological break first.
+					if (a.state === "late") return b.at - a.at;
+					return a.at - b.at;
 				});
 				let sent = items.filter((x) => x.c[x.f]).length,
 					late = items.filter((x) => x.state === "late").length,

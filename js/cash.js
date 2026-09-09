@@ -38,6 +38,23 @@ function latestDrawerCount(id, spw = currentSpw) {
 function cashNumber(v) { const n = Number.parseFloat(String(v ?? "").replace(/[^0-9.-]/g, "")); return Number.isFinite(n) ? n : 0; }
 function formatMoney(v) { return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(cashNumber(v)); }
 function safePhysicalTotal(spw = currentSpw) { return SAFE_DENOMINATIONS.reduce((sum, d) => sum + cashNumber(normaliseCash(spw?.cash).safe.denominations[d]), 0); }
+
+function cashShiftEnd(spw = currentSpw) {
+    if (!spw?.shift_date || !spw?.shift_type) return null;
+    const start = shiftSlotStart({ date: spw.shift_date, type: spw.shift_type });
+    return new Date(start.getTime() + 8 * 60 * 60000);
+}
+function cashDueState(spw = currentSpw) {
+    const end = cashShiftEnd(spw);
+    if (!end) return { due: false, overdue: false, minutesToEnd: null };
+    const minutesToEnd = Math.ceil((end.getTime() - Date.now()) / 60000);
+    return {
+        due: minutesToEnd <= 60 && minutesToEnd >= 0,
+        overdue: minutesToEnd < 0,
+        minutesToEnd,
+        end,
+    };
+}
 function cashCompletionStatus(spw = currentSpw) {
     if (!spw) return { complete: false, hasVariance: false, totalVariance: 0 };
     const cash = normaliseCash(spw.cash);
@@ -51,8 +68,11 @@ function cashCompletionStatus(spw = currentSpw) {
 }
 function cashCriticalCard() {
     if (!currentSpw) return "";
-    const st = cashCompletionStatus();
-    return `<div class="card cash-critical ${st.complete ? "complete" : "outstanding"}"><div class="cash-critical-copy"><span class="task-category">Critical</span><h2>Cash Management</h2><div class="small muted">Drawer closeout and safe count must be completed for the shift.</div></div><div><span class="pill ${st.complete ? (st.hasVariance ? "warn" : "ok") : "bad"}">${st.complete ? (st.hasVariance ? `Variance ${formatMoney(st.totalVariance)}` : "Complete") : "Outstanding"}</span><button class="btn primary sm" onclick="showPage('cash')">${st.complete ? "Review" : "Complete now"}</button></div></div>`;
+    const st = cashCompletionStatus(), due = cashDueState();
+    const timing = due.overdue ? "Overdue" : due.due ? `Due now · ${Math.max(0, due.minutesToEnd)}m to shift end` : due.minutesToEnd != null ? `Due in final hour · ${Math.max(0, due.minutesToEnd - 60)}m until due` : "Due in final hour";
+    const statusClass = st.complete ? (st.hasVariance ? "warn" : "ok") : (due.due || due.overdue ? "bad" : "info");
+    const statusText = st.complete ? (st.hasVariance ? `Variance ${formatMoney(st.totalVariance)}` : "Complete") : timing;
+    return `<div class="card cash-critical ${st.complete ? "complete" : due.due || due.overdue ? "outstanding" : "not-due"}"><div class="cash-critical-copy"><span class="task-category">Critical · End of shift</span><h2>Cash Management</h2><div class="small muted">Drawer closeout and safe count become due during the final hour of the shift.</div></div><div><span class="pill ${statusClass}">${statusText}</span><button class="btn primary sm" onclick="showPage('cash')">${st.complete ? "Review" : due.due || due.overdue ? "Complete now" : "Open"}</button></div></div>`;
 }
 function cashDrawerCard(def) {
     const cash = normaliseCash(currentSpw.cash);
@@ -68,7 +88,7 @@ function renderCashManagement() {
     currentSpw.cash = normaliseCash(currentSpw.cash);
     const physical = safePhysicalTotal();
     const status = cashCompletionStatus();
-    el.innerHTML = pageHero("Cash Management", "Critical end-of-shift drawer closeout and safe count") + cashCriticalCard() +
+    el.innerHTML = pageHero("Cash Management", "Drawer closeout and safe count · due in the final hour of the shift") + cashCriticalCard() +
         `<div class="cash-overview"><div class="metric"><div class="n">${formatMoney(CASH_DRAWER_DEFS.filter((d) => d.required || currentSpw.cash.drawers[d.id].enabled).reduce((s,d) => s + (latestDrawerCount(d.id)?.deposit || 0),0))}</div><div class="l">Deposit from counted drawers</div></div><div class="metric"><div class="n">${formatMoney(physical)}</div><div class="l">Physical safe counted</div></div><div class="metric"><div class="n">${formatMoney(SAFE_TOTAL_TARGET)}</div><div class="l">Safe accountability target</div></div></div>` +
         `<div class="section-title">Drawer counts</div>${CASH_DRAWER_DEFS.map(cashDrawerCard).join("")}` +
         `<div class="card"><div class="cash-head"><div><h2>Safe Count</h2><div class="small muted">Physical safe target ${formatMoney(PHYSICAL_SAFE_TARGET)}. Together with four ${formatMoney(DRAWER_FLOAT)} drawer floats (${formatMoney(SAFE_DRAWER_FLOAT_TOTAL)}), total accountability is ${formatMoney(SAFE_TOTAL_TARGET)}.</div></div><span class="pill ${currentSpw.cash.safe.counted_at ? (Math.abs(physical-PHYSICAL_SAFE_TARGET)>.004 ? "warn" : "ok") : "bad"}">${currentSpw.cash.safe.counted_at ? `Counted · ${formatMoney(physical-PHYSICAL_SAFE_TARGET)} variance` : "Outstanding"}</span></div><div class="safe-grid">${SAFE_DENOMINATIONS.map((d) => `<div class="field"><label>${esc(d)} amount ($)</label><input class="safe-denom" data-denom="${esc(d)}" type="number" min="0" step="0.01" inputmode="decimal" value="${esc(currentSpw.cash.safe.denominations[d] || "")}" oninput="previewSafeTotal()"></div>`).join("")}</div><div class="cash-safe-total"><span>Physical safe total</span><strong id="safe-total">${formatMoney(physical)}</strong><span id="safe-variance" class="${Math.abs(physical-PHYSICAL_SAFE_TARGET)>.004 ? "warning-text" : ""}">Variance ${formatMoney(physical-PHYSICAL_SAFE_TARGET)}</span></div><div class="row"><button class="btn primary" onclick="saveSafeCount()">${currentSpw.cash.safe.counted_at ? "Save recount" : "Save safe count"}</button></div></div>` +
