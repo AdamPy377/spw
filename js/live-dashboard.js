@@ -269,6 +269,7 @@ function liveTasksCard() {
 						? `<div class="card upcoming-preview-card"><h2>Upcoming shift preview</h2><div class="small muted">This is the next available SPW within two shift slots. Live urgency is paused until this shift actually starts, so future breaks, clock-offs, current-hour sales and food-safety timing will not be shown as overdue.</div></div>`
 						: `<div class="card"><h2>Actionable alerts</h2><div class="alerts">${renderAlerts(6)}</div></div>`) +
 					`<div class="card live-positioning-overview"><div class="row"><div><h2>Positioning overview</h2><div class="small muted">Same positioning layout as View SPW, already loaded for this shift.</div></div><span style="flex:1"></span><button class="btn primary" onclick="openLoadedPositioning()">View / edit positioning</button></div><div style="margin-top:10px">${historyWorksheet(spw)}</div></div>` +
+					`<div class="live-positioning-mobile-link"><button class="btn primary" onclick="openLoadedPositioning()">View / edit positioning</button></div>` +
 					nextStepsCard() +
 					liveBoard(spw) +
 					liveFoodSafetyCard() +

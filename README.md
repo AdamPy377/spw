@@ -1,6 +1,6 @@
-# SPW v15.6
+# SPW v15.6.1
 
-SPW v15.6 keeps the fast local SQLite/Gunicorn setup from v15.5 and improves live operations: demand-aware area strength, a loaded positioning overview on Live SPW, chronological next steps, corrected break ordering, and Cash Management becoming due only in the final hour of the shift.
+SPW v15.6.1 keeps the fast local SQLite/Gunicorn setup from v15.5 and improves live operations: demand-aware area strength, a loaded positioning overview on Live SPW, chronological next steps, corrected break ordering, and Cash Management becoming due only in the final hour of the shift.
 
 ## Storage layout
 
@@ -65,7 +65,7 @@ Replace the repository files with this version, then run:
 
 ```bash
 git add -A
-git commit -m "SPW v15.6 - live operations improvements"
+git commit -m "SPW v15.6.1 - live operations improvements"
 git push
 ```
 
@@ -80,3 +80,8 @@ http://DOCKER-HOST-IP:3000
 ## Backups
 
 `backup.py` creates a consistent SQLite backup when the backup container starts and then every 24 hours. Backups older than 30 days are removed automatically.
+
+
+## v15.6.1 mobile positioning change
+- Desktop Live SPW keeps the full Positioning overview.
+- Mobile Live SPW hides the embedded positioning worksheet and shows only a full-width View / edit positioning button, restoring the cleaner mobile dashboard layout.

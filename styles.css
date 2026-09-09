@@ -2241,6 +2241,11 @@
 .live-positioning-overview .worksheet {
 	margin-top: 8px;
 }
+
+.live-positioning-mobile-link {
+	display: none;
+	margin-bottom: 12px;
+}
 .next-steps-list {
 	display: grid;
 	gap: 7px;
@@ -2279,10 +2284,13 @@
 		grid-column: 1 / -1;
 		width: 100%;
 	}
-	.live-positioning-overview > .row {
-		align-items: stretch;
+	.live-positioning-overview {
+		display: none;
 	}
-	.live-positioning-overview > .row .btn {
+	.live-positioning-mobile-link {
+		display: block;
+	}
+	.live-positioning-mobile-link .btn {
 		width: 100%;
 	}
 }
