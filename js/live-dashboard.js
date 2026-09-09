@@ -195,9 +195,12 @@ function liveTasksCard() {
 				};
 				for (let c of spw.crew || []) {
 					let start = crewStartDateTime(c, spw);
-					if (start) add(start.getTime(), `${c.name} clocks on`, "Clock on", "Positioning", "openLoadedPositioning()");
 					let end = start && c.shift_end ? new Date(start.getTime() + duration(c.shift_start, c.shift_end) * 60000) : null;
-					if (end) add(end.getTime(), `${c.name} clocks off${c.station ? ` from ${c.station}` : ""}`, "Clock off", "Positioning", "openLoadedPositioning()");
+					if (end) add(end.getTime(), `${c.name} clocks off${activePlacement(c, spw).station ? ` from ${activePlacement(c, spw).station}` : ""}`, "Clock off", "Positioning", "openLoadedPositioning()");
+					for (let a of normaliseAssignments(c.assignments).filter((x) => x.mode === "position" && x.start)) {
+						let when = crewMomentForTime(c, a.start, spw);
+						if (when) add(when.getTime(), `${c.name} → ${a.area}${a.station ? ` · ${a.station}` : ""}`, "Position", "Positioning", "openLoadedPositioning()");
+					}
 					for (let [f, t, l] of [["meal_sent","meal_time","Meal"],["rest1_sent","rest1_time","Rest"],["rest2_sent","rest2_time","Rest"]]) {
 						if (!c[t] || c[f]) continue;
 						let when = crewMomentForTime(c, c[t], spw);
@@ -215,9 +218,9 @@ function liveTasksCard() {
 			function nextStepsCard() {
 				let steps = upcomingSteps();
 				if (liveViewMode.isPreview) return "";
-				if (!steps.length) return `<div class="card next-steps-card"><h2>Next steps</h2><div class="alert good"><div>No upcoming crew, break or cash events are scheduled.</div></div></div>`;
+				if (!steps.length) return `<div class="card next-steps-card"><h2>Next steps</h2><div class="alert good"><div>No upcoming position, break, clock-off or cash events are scheduled.</div></div></div>`;
 				let now = Date.now();
-				return `<div class="card next-steps-card"><h2>Next steps</h2><div class="small muted" style="margin-bottom:8px">Upcoming clock-ons, breaks, clock-offs and end-of-shift cash timing.</div><div class="next-steps-list">${steps.map((s) => { let mins = Math.max(0, Math.round((s.at-now)/60000)); return `<div class="next-step"><div class="next-step-time"><strong>${new Date(s.at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}</strong><span>${mins === 0 ? 'Now' : `in ${mins}m`}</span></div><div class="next-step-copy"><span class="task-category">${esc(s.type)}</span><strong>${esc(s.text)}</strong></div>${s.action ? `<button class="btn sm" onclick="${s.run}">${esc(s.action)}</button>` : ''}</div>`; }).join("")}</div></div>`;
+				return `<div class="card next-steps-card"><h2>Next steps</h2><div class="small muted" style="margin-bottom:8px">Upcoming position changes, breaks, clock-offs and end-of-shift cash timing.</div><div class="next-steps-list">${steps.map((s) => { let mins = Math.max(0, Math.round((s.at-now)/60000)); return `<div class="next-step"><div class="next-step-time"><strong>${new Date(s.at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}</strong><span>${mins === 0 ? 'Now' : `in ${mins}m`}</span></div><div class="next-step-copy"><span class="task-category">${esc(s.type)}</span><strong>${esc(s.text)}</strong></div>${s.action ? `<button class="btn sm" onclick="${s.run}">${esc(s.action)}</button>` : ''}</div>`; }).join("")}</div></div>`;
 			}
 
 			function nextAction() {
@@ -228,8 +231,6 @@ function liveTasksCard() {
 						action: "Build / Edit",
 						run: `showPage('build')`,
 					};
-				let a = smartAlerts()[0];
-				if (a) return a;
 				let next = upcomingSteps(currentSpw, 1);
 				return next[0]
 					? { severity: "info", text: `${next[0].text} at ${new Date(next[0].at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}`, action: next[0].action, run: next[0].run }
@@ -266,8 +267,8 @@ function liveTasksCard() {
 					nowBarHtml() +
 					`<div id="command-centre" class="command-centre ${preview ? "preview-mode" : ""}">${commandCentreInner()}</div>` +
 					(preview
-						? `<div class="card upcoming-preview-card"><h2>Upcoming shift preview</h2><div class="small muted">This is the next available SPW within two shift slots. Live urgency is paused until this shift actually starts, so future breaks, clock-offs, current-hour sales and food-safety timing will not be shown as overdue.</div></div>`
-						: `<div class="card"><h2>Actionable alerts</h2><div class="alerts">${renderAlerts(6)}</div></div>`) +
+						? `<div class="card upcoming-preview-card"><h2>Upcoming shift preview</h2><div class="small muted">This is the next available SPW within two shift slots. Live urgency is paused until this shift actually starts.</div></div>`
+						: "") +
 					`<div class="card live-positioning-overview"><div class="row"><div><h2>Positioning overview</h2><div class="small muted">Same positioning layout as View SPW, already loaded for this shift.</div></div><span style="flex:1"></span><button class="btn primary" onclick="openLoadedPositioning()">View / edit positioning</button></div><div style="margin-top:10px">${historyWorksheet(spw)}</div></div>` +
 					`<div class="live-positioning-mobile-link"><button class="btn primary" onclick="openLoadedPositioning()">View / edit positioning</button></div>` +
 					nextStepsCard() +

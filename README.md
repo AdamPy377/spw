@@ -1,6 +1,6 @@
-# SPW v15.6.1
+# SPW v15.7
 
-SPW v15.6.1 keeps the fast local SQLite/Gunicorn setup from v15.5 and improves live operations: demand-aware area strength, a loaded positioning overview on Live SPW, chronological next steps, corrected break ordering, and Cash Management becoming due only in the final hour of the shift.
+SPW v15.7 keeps the fast local SQLite/Gunicorn setup from v15.5 and improves live operations: demand-aware area strength, a loaded positioning overview on Live SPW, chronological next steps, corrected break ordering, and Cash Management becoming due only in the final hour of the shift.
 
 ## Storage layout
 
@@ -34,7 +34,7 @@ The SQLite lock/busy timeout is 5 seconds (`timeout=5`, `PRAGMA busy_timeout=500
 
 ## Updating from v15.5
 
-There is **no database move required** for v15.6. Keep the live database and backup paths exactly as they are:
+There is **no database move required** for v15.7. Keep the live database and backup paths exactly as they are:
 
 ```text
 Live DB: /home/adam/docker/spw/shifts.db
@@ -65,7 +65,7 @@ Replace the repository files with this version, then run:
 
 ```bash
 git add -A
-git commit -m "SPW v15.6.1 - live operations improvements"
+git commit -m "SPW v15.7 - live operations improvements"
 git push
 ```
 
@@ -82,6 +82,16 @@ http://DOCKER-HOST-IP:3000
 `backup.py` creates a consistent SQLite backup when the backup container starts and then every 24 hours. Backups older than 30 days are removed automatically.
 
 
-## v15.6.1 mobile positioning change
+## v15.7 mobile positioning change
 - Desktop Live SPW keeps the full Positioning overview.
 - Mobile Live SPW hides the embedded positioning worksheet and shows only a full-width View / edit positioning button, restoring the cleaner mobile dashboard layout.
+
+
+## v15.7 changes
+
+- SPW logo returns directly to Live SPW.
+- Drawer counts are additive cycles: each new count keeps the prior count and adds only that cycle's excess over the $200 float to the cumulative deposit.
+- McCafé staffing expects 2–3 capable crew in the morning, 1 after noon under normal demand, and no fixed café crew after 7pm (manager/flex coverage expected).
+- Crew can have scheduled Position blocks and concurrent Flex coverage entries with optional time windows. Live area strength uses the active position plus capable flex support.
+- Live Next steps no longer includes clock-ons; scheduled position changes are included instead.
+- The separate Actionable alerts card was removed from Live SPW.

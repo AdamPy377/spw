@@ -247,9 +247,42 @@
 					: Math.round(f.score * 20);
 				return { score: pct, label: `${f.score}/5` };
 			}
+			function assignmentWindowActive(c, assignment, spw = currentSpw) {
+				if (!assignment) return false;
+				let nowRel = getNowShiftMinute(c, spw);
+				if (nowRel == null) return false;
+				let start = assignment.start ? relativeMins(assignment.start, c.shift_start) : 0;
+				let end = assignment.end ? relativeMins(assignment.end, c.shift_start) : duration(c.shift_start, c.shift_end);
+				if (start == null) start = 0;
+				if (end == null || end <= start) end = duration(c.shift_start, c.shift_end);
+				return nowRel >= start && nowRel < end;
+			}
+			function activePositionAssignment(c, spw = currentSpw) {
+				let matches = normaliseAssignments(c?.assignments).filter((a) => a.mode === "position" && assignmentWindowActive(c, a, spw));
+				return matches.length ? matches[matches.length - 1] : null;
+			}
+			function activePlacement(c, spw = currentSpw) {
+				let a = activePositionAssignment(c, spw);
+				return a ? { area: a.area, station: a.station || c.station, scheduled: true } : { area: c.area, station: c.station, scheduled: false };
+			}
+			function activeFlexAssignments(c, spw = currentSpw) {
+				return normaliseAssignments(c?.assignments).filter((a) => a.mode === "flex" && assignmentWindowActive(c, a, spw));
+			}
+			function bestFlexPlacement(c, assignment) {
+				if (!assignment?.area) return null;
+				let positions = assignment.station ? [assignment.station] : (AREA_DEFS.find((a) => a.key === assignment.area)?.positions || []);
+				let best = null;
+				for (let station of positions) {
+					let virtual = { ...c, area: assignment.area, station }, fit = assignedSkillFit(virtual), strength = positionStrength(virtual);
+					let capable = !!fit?.profile && fit.score >= fit.min;
+					let candidate = { crew: c, area: assignment.area, station, strength: strength.score, capable, fit };
+					if (!best || candidate.strength > best.strength) best = candidate;
+				}
+				return best;
+			}
 			function areaDemandContext(spw = currentSpw) {
 				let hi = currentHourIndex(spw);
-				let hour = new Date().getHours();
+				let hour = hi >= 0 ? (hourStarts(spw)[hi] % 1440) / 60 : new Date().getHours();
 				let sales = hi >= 0 ? salesValueForHour(spw, hi) : 0;
 				let onDuty = 0;
 				if (hi >= 0) {
@@ -266,72 +299,88 @@
 			}
 
 			function areaStaffingTargets(area, ctx) {
-				let target = { minimum: 1, preferred: 1, strong: 2, roleGroups: [] };
+				let target = { minimum: 1, preferred: 1, strong: 2, roleGroups: [], note: "" };
 				if (area === "McCafé") {
-					if (ctx.hour < 12) target = { minimum: 2, preferred: 3, strong: 4, roleGroups: [] };
-					else target = { minimum: 2, preferred: 2, strong: 3, roleGroups: [] };
-					if (ctx.demand >= 2) { target.preferred += 1; target.strong += 1; }
+					if (ctx.hour < 12) target = { minimum: 2, preferred: 3, strong: 4, roleGroups: [], note: "morning café" };
+					else if (ctx.hour < 19) target = { minimum: 1, preferred: ctx.demand >= 2 ? 2 : 1, strong: ctx.demand >= 2 ? 3 : 2, roleGroups: [], note: "afternoon café" };
+					else target = { minimum: 0, preferred: 0, strong: 1, roleGroups: [], note: "after 7pm · manager/flex coverage expected" };
 				} else if (area === "Drive Thru") {
 					target = { minimum: 2, preferred: 3 + (ctx.demand >= 2 ? 1 : 0), strong: 4 + (ctx.demand >= 3 ? 1 : 0), roleGroups: [
 						["OT Lane 1 / Cash", "OT Lane 2 / Flex", "Presenter / OT Lane 2", "Cashier / Flex"],
 						["Assembler / Presenter", "Presenter / OT Lane 2", "Coordinator", "Expeditor"],
-					] };
+					], note: "order taker + runner/presenter required" };
 				} else if (area === "In Restaurant") {
-					target = { minimum: 1, preferred: 2, strong: ctx.demand >= 2 ? 3 : 2, roleGroups: [] };
+					target = { minimum: 1, preferred: 2, strong: ctx.demand >= 2 ? 3 : 2, roleGroups: [], note: "one strong crew can hold normal demand" };
 				} else if (area === "Kitchen") {
-					target = { minimum: 3, preferred: 3 + ctx.demand, strong: 4 + ctx.demand, roleGroups: [] };
+					target = { minimum: 3, preferred: 3 + ctx.demand, strong: 4 + ctx.demand, roleGroups: [], note: "" };
 				} else if (area === "McDelivery") {
-					target = { minimum: 1, preferred: ctx.demand >= 2 ? 2 : 1, strong: ctx.demand >= 2 ? 3 : 2, roleGroups: [] };
+					target = { minimum: 1, preferred: ctx.demand >= 2 ? 2 : 1, strong: ctx.demand >= 2 ? 3 : 2, roleGroups: [], note: "flex coverage can support this area" };
 				} else if (area === "Beverage Cell") {
-					target = { minimum: 1, preferred: ctx.demand >= 2 ? 2 : 1, strong: 2, roleGroups: [] };
+					target = { minimum: 1, preferred: ctx.demand >= 2 ? 2 : 1, strong: 2, roleGroups: [], note: "" };
 				}
 				return target;
 			}
 
 			function areaCoverage(area, spw = currentSpw) {
-				let crew = (spw?.crew || []).filter((c) => c.area === area && c.station);
 				let ctx = areaDemandContext(spw), target = areaStaffingTargets(area, ctx);
-				let strengths = crew.map(positionStrength);
-				let isCapable = (c) => {
-					let fit = assignedSkillFit(c);
-					return !!fit?.profile && fit.score >= fit.min;
-				};
-				let capable = crew.filter(isCapable).length;
-				let avgStrength = strengths.length ? strengths.reduce((s, x) => s + x.score, 0) / strengths.length : 0;
+				let primary = (spw?.crew || []).map((c) => ({ c, placement: activePlacement(c, spw) }))
+					.filter((x) => x.placement.area === area && x.placement.station)
+					.map((x) => ({ ...x.c, area: x.placement.area, station: x.placement.station }));
+				let primaryIds = new Set(primary.map((c) => c.id));
+				let flex = [];
+				for (let c of spw?.crew || []) {
+					if (primaryIds.has(c.id)) continue;
+					for (let a of activeFlexAssignments(c, spw)) {
+						if (a.area !== area) continue;
+						let best = bestFlexPlacement(c, a);
+						if (best) flex.push(best);
+					}
+				}
+				let isCapable = (c) => { let fit = assignedSkillFit(c); return !!fit?.profile && fit.score >= fit.min; };
+				let capable = primary.filter(isCapable).length;
+				let capableFlex = flex.filter((x) => x.capable);
+				let flexUnits = capableFlex.reduce((sum, x) => sum + Math.max(.45, Math.min(.75, x.strength / 135)), 0);
+				let effectiveCapable = capable + flexUnits;
+				let strengths = primary.map(positionStrength).map((x) => x.score);
+				let avgStrength = strengths.length ? strengths.reduce((s,x)=>s+x,0)/strengths.length : (capableFlex.length ? capableFlex.reduce((s,x)=>s+x.strength,0)/capableFlex.length : (target.minimum === 0 ? 85 : 0));
 
-				let headcountScore = target.preferred ? Math.min(100, (capable / target.preferred) * 100) : 100;
-				if (capable < target.minimum) headcountScore *= 0.55;
+				let headcountScore = target.preferred > 0 ? Math.min(100, (effectiveCapable / target.preferred) * 100) : (target.minimum === 0 ? (capableFlex.length ? 100 : 85) : 100);
+				if (effectiveCapable < target.minimum) headcountScore *= .55;
 
 				let roleScore = 100;
 				if (target.roleGroups.length) {
-					let eligibleByRole = target.roleGroups.map((group) => crew.filter((c) => group.includes(c.station) && isCapable(c)).map((c) => c.id));
+					let candidates = primary.map((c) => ({ id:c.id, station:c.station, capable:isCapable(c), weight:1 }))
+						.concat(capableFlex.map((x) => ({ id:x.crew.id, station:x.station, capable:true, weight:.7 })));
+					let eligibleByRole = target.roleGroups.map((group) => candidates.filter((x) => group.includes(x.station) && x.capable));
 					let matched = 0, used = new Set();
-					for (let ids of eligibleByRole.sort((a,b) => a.length-b.length)) {
-						let id = ids.find((x) => !used.has(x));
-						if (id != null) { used.add(id); matched++; }
-					}
-					roleScore = (matched / target.roleGroups.length) * 100;
+					for (let list of eligibleByRole.sort((a,b)=>a.length-b.length)) { let hit=list.find((x)=>!used.has(x.id)); if(hit){used.add(hit.id);matched += hit.weight;} }
+					roleScore = Math.min(100, (matched / target.roleGroups.length) * 100);
 				}
 
-				let essentials = ESSENTIAL_POSITIONS[area] || [];
-				let essentialScore = 100;
+				let essentials = ESSENTIAL_POSITIONS[area] || [], essentialScore = 100;
 				if (essentials.length && !target.roleGroups.length) {
 					let scores = essentials.map((pos) => {
-						let member = crew.find((c) => c.station === pos);
-						return member ? positionStrength(member).score : 0;
+						let member = primary.find((c) => c.station === pos);
+						if (member) return positionStrength(member).score;
+						let fx = capableFlex.find((x) => x.station === pos);
+						return fx ? fx.strength * .7 : 0;
 					});
-					essentialScore = scores.reduce((a,b) => a+b, 0) / scores.length;
+					essentialScore = scores.reduce((a,b)=>a+b,0)/scores.length;
 				}
 
-				let score = Math.round(0.42 * headcountScore + 0.28 * avgStrength + 0.18 * roleScore + 0.12 * essentialScore);
-				if (!crew.length) score = 0;
-				if (capable < target.minimum || roleScore < 100) score = Math.min(score, 54);
-				if (area === "In Restaurant" && capable >= 1 && avgStrength >= 85 && ctx.demand < 3) score = Math.max(score, 80);
-				if (capable >= target.strong && roleScore === 100 && avgStrength >= 78) score = Math.max(score, 85);
+				let score = Math.round(.42*headcountScore + .28*avgStrength + .18*roleScore + .12*essentialScore);
+				if (!primary.length && !flex.length && target.minimum > 0) score = 0;
+				if (effectiveCapable < target.minimum || roleScore < 70) score = Math.min(score,54);
+				if (area === "In Restaurant" && capable >= 1 && avgStrength >= 85 && ctx.demand < 3) score = Math.max(score,80);
+				if (target.minimum === 0 && !primary.length) score = Math.max(score, capableFlex.length ? 95 : 82);
+				if (effectiveCapable >= target.strong && roleScore >= 95 && avgStrength >= 78) score = Math.max(score,85);
 				let state = score >= 80 ? "strong" : score >= 55 ? "thin" : "critical";
-				let detail = `${capable}/${crew.length} capable · target ${target.minimum} min, ${target.preferred} preferred${ctx.sales ? ` · $${Math.round(ctx.sales)}/h sales` : ""}`;
-				return { score, state, capable, total: crew.length, target, detail, sales: ctx.sales, onDuty: ctx.onDuty };
+				let head = `${capable}/${primary.length} primary capable${capableFlex.length ? ` + ${capableFlex.length} flex` : ""}`;
+				let targetText = target.minimum === 0 ? "no fixed crew expected" : `target ${target.minimum} min, ${target.preferred} preferred`;
+				let detail = `${head} · ${targetText}${ctx.sales ? ` · $${Math.round(ctx.sales)}/h sales` : ""}${target.note ? ` · ${target.note}` : ""}`;
+				return { score, state, capable, flex: capableFlex.length, total: primary.length, target, detail, sales: ctx.sales, onDuty: ctx.onDuty };
 			}
+
 			function isAreaLeader(c) {
 				return (
 					Number(currentSpw?.area_leaders?.[c.area]) === Number(c.id)
@@ -371,22 +420,18 @@
 				return `<div class="crew-startoff normal">${fmtTime(c.shift_start)} – ${fmtTime(c.shift_end)}</div>`;
 			}
 			function liveBoard(spw) {
-				return (
-					AREA_DEFS.map((a) => {
-						let ms = spw.crew.filter(
-							(c) => c.area === a.key && c.station,
-						);
-						if (!ms.length) return "";
-						let cov = areaCoverage(a.key, spw);
-						return `<div class="live-area"><div class="live-title"><span>${a.key}<small class="area-demand-detail">${esc(cov.detail)}</small></span><span class="area-score ${cov.state}" title="${esc(cov.detail)}">${cov.score}/100 · ${cov.state === "strong" ? "Strong" : cov.state === "thin" ? "Thin" : "Critical"}</span></div>${ms
-							.map((c) => {
-								let strength = positionStrength(c),
-									leader = isAreaLeader(c);
-								return `<div class="live-card ${activeBreak(c) ? "onbreak" : ""} ${crewSkillClass(c)} ${leader ? "area-leader" : ""}" data-live-crew="${c.id}"><div><div class="name">${esc(c.name)}${leader ? '<span class="leader-star" title="Area leader">★</span>' : ""}<span class="strength-pill">${strength.score}/100</span></div><span class="station-badge" style="background:${positionColour(c.area, c.station)};color:#111">${esc(c.station)}</span>${clockStatusHtml(c)}${c.secondary_flex ? `<div class="small muted" style="margin-top:3px">${esc(c.secondary_flex)}</div>` : ""}<div class="mobile-action-row"><button class="move-btn" onclick="openMoveModal(${c.id})" title="Move or swap">↔</button><button class="leader-btn ${leader ? "active" : ""}" onclick="toggleAreaLeader(${c.id})" title="Toggle area leader">★</button></div></div><div class="live-breaks">${breakButton(c, "meal_sent", c.meal_time, "Meal")}${breakButton(c, "rest1_sent", c.rest1_time, "Rest")}${breakButton(c, "rest2_sent", c.rest2_time, "Rest")}</div></div>`;
-							})
-							.join("")}</div>`;
-					}).join("") || '<div class="card">No positioned crew.</div>'
-				);
+				return AREA_DEFS.map((a) => {
+					let ms = (spw.crew || []).map((c) => ({ c, placement: activePlacement(c, spw) }))
+						.filter((x) => x.placement.area === a.key && x.placement.station);
+					if (!ms.length && !["Kitchen","Drive Thru","In Restaurant","McCafé","Fries","McDelivery"].includes(a.key)) return "";
+					let cov = areaCoverage(a.key, spw);
+					return `<div class="live-area"><div class="live-title"><span>${a.key}<small class="area-demand-detail">${esc(cov.detail)}</small></span><span class="area-score ${cov.state}" title="${esc(cov.detail)}">${cov.score}/100 · ${cov.state === "strong" ? "Strong" : cov.state === "thin" ? "Thin" : "Critical"}</span></div>${ms.map(({c, placement}) => {
+						let virtual = { ...c, area: placement.area, station: placement.station }, strength = positionStrength(virtual), leader = isAreaLeader(c);
+						let activeFlex = activeFlexAssignments(c, spw).map((x) => x.area).filter((x) => x !== placement.area);
+						let flexText = activeFlex.length ? `<div class="small muted" style="margin-top:3px">Flex: ${esc([...new Set(activeFlex)].join(", "))}</div>` : "";
+						return `<div class="live-card ${activeBreak(c) ? "onbreak" : ""} ${crewSkillClass(virtual)} ${leader ? "area-leader" : ""}" data-live-crew="${c.id}"><div><div class="name">${esc(c.name)}${leader ? '<span class="leader-star" title="Area leader">★</span>' : ""}<span class="strength-pill">${strength.score}/100</span></div><span class="station-badge" style="background:${positionColour(placement.area, placement.station)};color:#111">${esc(placement.station)}</span>${placement.scheduled ? '<span class="pill info" style="margin-left:5px">Scheduled move</span>' : ""}${clockStatusHtml(c)}${c.secondary_flex ? `<div class="small muted" style="margin-top:3px">${esc(c.secondary_flex)}</div>` : ""}${flexText}<div class="mobile-action-row"><button class="move-btn" onclick="openMoveModal(${c.id})" title="Move or swap">↔</button><button class="leader-btn ${leader ? "active" : ""}" onclick="toggleAreaLeader(${c.id})" title="Toggle area leader">★</button></div></div><div class="live-breaks">${breakButton(c, "meal_sent", c.meal_time, "Meal")}${breakButton(c, "rest1_sent", c.rest1_time, "Rest")}${breakButton(c, "rest2_sent", c.rest2_time, "Rest")}</div></div>`;
+					}).join("")}</div>`;
+				}).join("");
 			}
 
 			function smartAlerts(spw = currentSpw) {

@@ -35,6 +35,9 @@ function latestDrawerCount(id, spw = currentSpw) {
     const counts = normaliseCash(spw?.cash).drawers[id]?.counts || [];
     return counts[counts.length - 1] || null;
 }
+function drawerDepositTotal(id, spw = currentSpw) {
+    return (normaliseCash(spw?.cash).drawers[id]?.counts || []).reduce((sum, count) => sum + cashNumber(count.deposit), 0);
+}
 function cashNumber(v) { const n = Number.parseFloat(String(v ?? "").replace(/[^0-9.-]/g, "")); return Number.isFinite(n) ? n : 0; }
 function formatMoney(v) { return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(cashNumber(v)); }
 function safePhysicalTotal(spw = currentSpw) { return SAFE_DENOMINATIONS.reduce((sum, d) => sum + cashNumber(normaliseCash(spw?.cash).safe.denominations[d]), 0); }
@@ -78,10 +81,10 @@ function cashDrawerCard(def) {
     const cash = normaliseCash(currentSpw.cash);
     const drawer = cash.drawers[def.id];
     if (!def.required && !drawer.enabled) return `<div class="card cash-drawer optional"><h2>${esc(def.label)}</h2><div class="small muted">Optional drawer.</div><button class="btn" onclick="setDrawerEnabled('${def.id}',true)">Add drawer count</button></div>`;
-    const latest = latestDrawerCount(def.id);
-    const history = drawer.counts || [];
-    return `<div class="card cash-drawer"><div class="cash-head"><div><h2>${esc(def.label)}</h2><div class="small muted">Float ${formatMoney(DRAWER_FLOAT)} · deposit is cash above float</div></div>${!def.required ? `<button class="btn sm" onclick="setDrawerEnabled('${def.id}',false)">Remove</button>` : ""}</div>${latest ? `<div class="cash-summary"><div><span>Last count</span><strong>${formatMoney(latest.total)}</strong></div><div><span>Deposit</span><strong>${formatMoney(latest.deposit)}</strong></div><div><span>Variance</span><strong class="${Math.abs(latest.variance) > .004 ? "warning-text" : ""}">${formatMoney(latest.variance)}</strong></div></div>` : '<div class="alert bad"><div>Not counted yet.</div></div>'}<div class="row"><div class="field"><label>${latest ? "Recount total cash" : "Drawer total cash"}</label><input id="drawer-${def.id}" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00"></div><button class="btn primary" onclick="saveDrawerCount('${def.id}')">${latest ? "Save recount" : "Save count"}</button></div>${history.length > 1 ? `<details class="result-advanced"><summary>Count history (${history.length})</summary>${history.slice().reverse().map((h) => `<div class="cash-history"><span>${esc(fmtDateTime(h.at))}</span><span>${formatMoney(h.total)}</span><span>Deposit ${formatMoney(h.deposit)}</span><span>Var ${formatMoney(h.variance)}</span></div>`).join("")}</details>` : ""}</div>`;
+    const latest = latestDrawerCount(def.id), history = drawer.counts || [], deposited = drawerDepositTotal(def.id);
+    return `<div class="card cash-drawer"><div class="cash-head"><div><h2>${esc(def.label)}</h2><div class="small muted">Each entry is a new drawer cycle. Keep ${formatMoney(DRAWER_FLOAT)} as the float; only the excess from each count is added to the deposit.</div></div>${!def.required ? `<button class="btn sm" onclick="setDrawerEnabled('${def.id}',false)">Remove</button>` : ""}</div>${latest ? `<div class="cash-summary"><div><span>Latest count</span><strong>${formatMoney(latest.total)}</strong></div><div><span>Latest deposit</span><strong>${formatMoney(latest.deposit)}</strong></div><div><span>Total deposited</span><strong>${formatMoney(deposited)}</strong></div></div>` : '<div class="alert bad"><div>Not counted yet.</div></div>'}<div class="row"><div class="field"><label>${latest ? "Next drawer count" : "Drawer total cash"}</label><input id="drawer-${def.id}" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0.00"></div><button class="btn primary" onclick="saveDrawerCount('${def.id}')">${latest ? "Save additional count" : "Save count"}</button></div>${history.length ? `<details class="result-advanced" ${history.length > 1 ? "open" : ""}><summary>Drawer counts (${history.length})</summary>${history.slice().reverse().map((h, i) => `<div class="cash-history"><span>${esc(fmtDateTime(h.at))}</span><span>${formatMoney(h.total)}</span><span>Deposit ${formatMoney(h.deposit)}</span><span>${i === 0 ? `Running ${formatMoney(deposited)}` : ""}</span></div>`).join("")}</details>` : ""}</div>`;
 }
+
 function renderCashManagement() {
     const el = $("page-cash");
     if (!currentSpw) { el.innerHTML = pageHero("Cash Management") + buildPicker(); return; }
@@ -89,7 +92,7 @@ function renderCashManagement() {
     const physical = safePhysicalTotal();
     const status = cashCompletionStatus();
     el.innerHTML = pageHero("Cash Management", "Drawer closeout and safe count · due in the final hour of the shift") + cashCriticalCard() +
-        `<div class="cash-overview"><div class="metric"><div class="n">${formatMoney(CASH_DRAWER_DEFS.filter((d) => d.required || currentSpw.cash.drawers[d.id].enabled).reduce((s,d) => s + (latestDrawerCount(d.id)?.deposit || 0),0))}</div><div class="l">Deposit from counted drawers</div></div><div class="metric"><div class="n">${formatMoney(physical)}</div><div class="l">Physical safe counted</div></div><div class="metric"><div class="n">${formatMoney(SAFE_TOTAL_TARGET)}</div><div class="l">Safe accountability target</div></div></div>` +
+        `<div class="cash-overview"><div class="metric"><div class="n">${formatMoney(CASH_DRAWER_DEFS.filter((d) => d.required || currentSpw.cash.drawers[d.id].enabled).reduce((s,d) => s + drawerDepositTotal(d.id),0))}</div><div class="l">Deposit from counted drawers</div></div><div class="metric"><div class="n">${formatMoney(physical)}</div><div class="l">Physical safe counted</div></div><div class="metric"><div class="n">${formatMoney(SAFE_TOTAL_TARGET)}</div><div class="l">Safe accountability target</div></div></div>` +
         `<div class="section-title">Drawer counts</div>${CASH_DRAWER_DEFS.map(cashDrawerCard).join("")}` +
         `<div class="card"><div class="cash-head"><div><h2>Safe Count</h2><div class="small muted">Physical safe target ${formatMoney(PHYSICAL_SAFE_TARGET)}. Together with four ${formatMoney(DRAWER_FLOAT)} drawer floats (${formatMoney(SAFE_DRAWER_FLOAT_TOTAL)}), total accountability is ${formatMoney(SAFE_TOTAL_TARGET)}.</div></div><span class="pill ${currentSpw.cash.safe.counted_at ? (Math.abs(physical-PHYSICAL_SAFE_TARGET)>.004 ? "warn" : "ok") : "bad"}">${currentSpw.cash.safe.counted_at ? `Counted · ${formatMoney(physical-PHYSICAL_SAFE_TARGET)} variance` : "Outstanding"}</span></div><div class="safe-grid">${SAFE_DENOMINATIONS.map((d) => `<div class="field"><label>${esc(d)} amount ($)</label><input class="safe-denom" data-denom="${esc(d)}" type="number" min="0" step="0.01" inputmode="decimal" value="${esc(currentSpw.cash.safe.denominations[d] || "")}" oninput="previewSafeTotal()"></div>`).join("")}</div><div class="cash-safe-total"><span>Physical safe total</span><strong id="safe-total">${formatMoney(physical)}</strong><span id="safe-variance" class="${Math.abs(physical-PHYSICAL_SAFE_TARGET)>.004 ? "warning-text" : ""}">Variance ${formatMoney(physical-PHYSICAL_SAFE_TARGET)}</span></div><div class="row"><button class="btn primary" onclick="saveSafeCount()">${currentSpw.cash.safe.counted_at ? "Save recount" : "Save safe count"}</button></div></div>` +
         `<div class="card"><h2>Cash notes</h2><textarea oninput="currentSpw.cash.notes=this.value;scheduleSave()" placeholder="Cash issue, recount reason, safe discrepancy…">${esc(currentSpw.cash.notes || "")}</textarea></div>`;
@@ -104,7 +107,7 @@ async function saveDrawerCount(id) {
     currentSpw.cash = normaliseCash(currentSpw.cash);
     currentSpw.cash.drawers[id].counts.push({ total, deposit, variance, at: new Date().toISOString() });
     await saveSpw(true);
-    toast(currentSpw.cash.drawers[id].counts.length > 1 ? "Drawer recount saved" : "Drawer count saved");
+    toast(currentSpw.cash.drawers[id].counts.length > 1 ? "Additional drawer count saved" : "Drawer count saved");
     renderCashManagement();
 }
 function previewSafeTotal() {

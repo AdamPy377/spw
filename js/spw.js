@@ -6,7 +6,10 @@ function normaliseLoadedSpw(spw, type) {
     spw.goals = spw.goals || {};
     spw.area_leaders = spw.area_leaders || {};
     spw.crew = spw.crew || [];
-    spw.crew.forEach((c) => { c.station = normalisePosition(c.area, c.station); });
+    spw.crew.forEach((c) => {
+        c.station = normalisePosition(c.area, c.station);
+        c.assignments = Array.isArray(c.assignments) ? c.assignments : [];
+    });
     spw.food_safety = spw.food_safety || {};
     spw.tasks = spw.tasks || {};
     spw.results = spw.results || {};

@@ -34,6 +34,21 @@ def validate_crew_data(data):
             step = 5 if field.startswith("rest") else 15
             if minute % step:
                 return f"{field.replace('_', ' ').title()} must use {step}-minute increments"
+    assignments = data.get("assignments")
+    if assignments is not None:
+        if not isinstance(assignments, list):
+            return "Assignments must be a list"
+        for item in assignments:
+            if not isinstance(item, dict):
+                return "Each assignment must be an object"
+            if item.get("mode", "flex") not in {"position", "flex"}:
+                return "Assignment type must be position or flex"
+            for field in ("start", "end"):
+                value = item.get(field, "")
+                if value and not valid_time(value):
+                    return f"Assignment {field} must be a valid HH:MM time"
+                if value and int(str(value).split(":")[1]) % 15:
+                    return f"Assignment {field} must use 15-minute increments"
     if "rest_count" in data:
         try:
             rests = int(data.get("rest_count") or 0)
@@ -132,6 +147,7 @@ def init_db():
             rest2_sent_at TEXT DEFAULT '',
             sort_order INTEGER DEFAULT 0,
             profile_id INTEGER,
+            assignments_json TEXT DEFAULT '[]',
             FOREIGN KEY(spw_id) REFERENCES spw(id),
             FOREIGN KEY(profile_id) REFERENCES crew_profiles(id) ON DELETE SET NULL
         )
@@ -148,6 +164,7 @@ def init_db():
         "rest2_time": "TEXT DEFAULT ''",
         "sort_order": "INTEGER DEFAULT 0",
         "profile_id": "INTEGER",
+        "assignments_json": "TEXT DEFAULT '[]'",
     })
 
     conn.execute("""
@@ -223,7 +240,11 @@ def get_spw():
     spw = spw_to_dict(row)
     crew = conn.execute("SELECT * FROM crew WHERE spw_id=? ORDER BY sort_order, id", (spw["id"],)).fetchall()
     conn.close()
-    spw["crew"] = [dict(c) for c in crew]
+    spw["crew"] = []
+    for row in crew:
+        item = dict(row)
+        item["assignments"] = json.loads(item.pop("assignments_json", "[]") or "[]")
+        spw["crew"].append(item)
     return jsonify(spw)
 
 
@@ -291,13 +312,14 @@ def add_crew():
         return jsonify({"error": "Linked crew profile no longer exists"}), 400
     cur = conn.execute("""
         INSERT INTO crew (spw_id, area, name, station, secondary_flex, shift_start, shift_end,
-                          meal_time, rest1_time, rest2_time, rest_count, sort_order, profile_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          meal_time, rest1_time, rest2_time, rest_count, sort_order, profile_id, assignments_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         data["spw_id"], data.get("area", ""), data["name"], data.get("station", ""),
         data.get("secondary_flex", ""), data.get("shift_start", ""), data.get("shift_end", ""),
         data.get("meal_time", ""), data.get("rest1_time", ""), data.get("rest2_time", ""),
         int(data.get("rest_count", 0) or 0), int(data.get("sort_order", 0) or 0), data.get("profile_id") or None,
+        json.dumps(data.get("assignments", [])),
     ))
     conn.commit()
     new_id = cur.lastrowid
@@ -322,10 +344,11 @@ def update_crew(crew_id):
     vals = {field: data.get(field, row[field] if field in row.keys() else "") for field in CREW_FIELDS}
     conn.execute("""
         UPDATE crew SET area=?, name=?, station=?, secondary_flex=?, shift_start=?, shift_end=?,
-                        meal_time=?, rest1_time=?, rest2_time=?, rest_count=?, sort_order=?, profile_id=? WHERE id=?
+                        meal_time=?, rest1_time=?, rest2_time=?, rest_count=?, sort_order=?, profile_id=?, assignments_json=? WHERE id=?
     """, (
         vals["area"], vals["name"], vals["station"], vals["secondary_flex"], vals["shift_start"], vals["shift_end"],
-        vals["meal_time"], vals["rest1_time"], vals["rest2_time"], int(vals["rest_count"] or 0), int(vals["sort_order"] or 0), vals.get("profile_id") or None, crew_id,
+        vals["meal_time"], vals["rest1_time"], vals["rest2_time"], int(vals["rest_count"] or 0), int(vals["sort_order"] or 0), vals.get("profile_id") or None,
+        json.dumps(data.get("assignments", json.loads(row["assignments_json"] or "[]"))), crew_id,
     ))
     conn.commit()
     conn.close()
@@ -350,11 +373,12 @@ def bulk_update_crew():
             vals = {field: data_item.get(field, row[field] if field in row.keys() else "") for field in CREW_FIELDS}
             conn.execute("""
                 UPDATE crew SET area=?, name=?, station=?, secondary_flex=?, shift_start=?, shift_end=?,
-                                meal_time=?, rest1_time=?, rest2_time=?, rest_count=?, sort_order=?, profile_id=? WHERE id=?
+                                meal_time=?, rest1_time=?, rest2_time=?, rest_count=?, sort_order=?, profile_id=?, assignments_json=? WHERE id=?
             """, (
                 vals["area"], vals["name"], vals["station"], vals["secondary_flex"],
                 vals["shift_start"], vals["shift_end"], vals["meal_time"], vals["rest1_time"],
-                vals["rest2_time"], int(vals["rest_count"] or 0), int(vals["sort_order"] or 0), vals.get("profile_id") or None, crew_id,
+                vals["rest2_time"], int(vals["rest_count"] or 0), int(vals["sort_order"] or 0), vals.get("profile_id") or None,
+                json.dumps(data_item.get("assignments", json.loads(row["assignments_json"] or "[]"))), crew_id,
             ))
         conn.commit()
     finally:

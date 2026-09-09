@@ -6,17 +6,74 @@
 					p = profiles.find((x) => x.id === id);
 				if (p && $("m-name")) $("m-name").value = p.name;
 			}
+function normaliseAssignments(items = []) {
+    return (Array.isArray(items) ? items : []).map((a) => ({
+        mode: a?.mode === "position" ? "position" : "flex",
+        area: String(a?.area || ""),
+        station: String(a?.station || ""),
+        start: String(a?.start || ""),
+        end: String(a?.end || ""),
+    })).filter((a) => a.area);
+}
+function assignmentStationOptions(area, selected = "", allowAny = false) {
+    const def = AREA_DEFS.find((a) => a.key === area);
+    const blank = allowAny ? '<option value="">Any capable position</option>' : '<option value="">Choose position</option>';
+    return blank + (def?.positions || []).map((pos) => `<option value="${esc(pos)}" ${pos === selected ? "selected" : ""}>${esc(pos)}</option>`).join("");
+}
+function assignmentRowHtml(a = {}, index = 0) {
+    const item = { mode: a.mode === "position" ? "position" : "flex", area: a.area || "", station: a.station || "", start: a.start || "", end: a.end || "" };
+    return `<div class="assignment-row" data-assignment-row="${index}"><div class="field"><label>Type</label><select class="assignment-mode" onchange="assignmentModeChanged(this)"><option value="flex" ${item.mode === "flex" ? "selected" : ""}>Flex</option><option value="position" ${item.mode === "position" ? "selected" : ""}>Position</option></select></div><div class="field"><label>Area</label><select class="assignment-area" onchange="assignmentAreaChanged(this)"><option value="">Choose area</option>${AREA_DEFS.map((d) => `<option value="${esc(d.key)}" ${d.key === item.area ? "selected" : ""}>${esc(d.key)}</option>`).join("")}</select></div><div class="field assignment-wide"><label>Position</label><select class="assignment-station">${assignmentStationOptions(item.area, item.station, item.mode === "flex")}</select></div><div class="field"><label>From</label><input class="assignment-start" type="time" step="900" value="${esc(item.start)}" onchange="snapTimeInput(this,15)"></div><div class="field"><label>Until</label><input class="assignment-end" type="time" step="900" value="${esc(item.end)}" onchange="snapTimeInput(this,15)"></div><button class="btn sm danger assignment-remove" type="button" onclick="this.closest('.assignment-row').remove()">Remove</button></div>`;
+}
+function addAssignmentRow(mode = "flex") {
+    const list = $("assignment-list");
+    if (!list) return;
+    const index = list.querySelectorAll(".assignment-row").length;
+    list.insertAdjacentHTML("beforeend", assignmentRowHtml({ mode }, index));
+}
+function assignmentModeChanged(select) {
+    const row = select.closest(".assignment-row");
+    const area = row.querySelector(".assignment-area").value;
+    const station = row.querySelector(".assignment-station");
+    station.innerHTML = assignmentStationOptions(area, station.value, select.value === "flex");
+}
+function assignmentAreaChanged(select) {
+    const row = select.closest(".assignment-row");
+    const mode = row.querySelector(".assignment-mode").value;
+    row.querySelector(".assignment-station").innerHTML = assignmentStationOptions(select.value, "", mode === "flex");
+}
+function collectAssignments() {
+    return [...document.querySelectorAll("#assignment-list .assignment-row")].map((row) => ({
+        mode: row.querySelector(".assignment-mode").value,
+        area: row.querySelector(".assignment-area").value,
+        station: row.querySelector(".assignment-station").value,
+        start: row.querySelector(".assignment-start").value,
+        end: row.querySelector(".assignment-end").value,
+    })).filter((a) => a.area);
+}
+function crewAssignmentSummary(c) {
+    const bits = [];
+    if (c?.secondary_flex) bits.push(`<span>${esc(c.secondary_flex)}</span>`);
+    for (const a of normaliseAssignments(c?.assignments)) {
+        const time = a.start || a.end ? `${a.start ? fmtTime(a.start) : "start"}–${a.end ? fmtTime(a.end) : "end"} ` : "";
+        const cls = a.mode === "position" ? "position-tag" : "flex-tag";
+        const prefix = a.mode === "position" ? "→" : "Flex";
+        bits.push(`<span class="${cls}">${esc(`${time}${prefix} ${a.area}${a.station ? ` · ${a.station}` : ""}`)}</span>`);
+    }
+    return bits.length ? `<div class="assignment-summary">${bits.join("")}</div>` : "";
+}
 function openCrewModal(id = null) {
     if (!currentSpw) return;
     const c = id ? currentSpw.crew.find((x) => x.id === id) : null;
     const area = c?.area || "", station = c?.station || "";
+    const assignments = normaliseAssignments(c?.assignments);
     const nativeTime = (id, label, value, step, preview = false) =>
         `<div class="field"><label>${label}</label><input id="${id}" type="time" step="${step * 60}" value="${esc(value || "")}" onchange="snapTimeInput(this,${step});${preview ? "previewBreakPlan();" : ""}"></div>`;
-    $("modal").innerHTML = `<div class="modal-box"><div class="modal-head"><h2>${c ? "Edit" : "Add"} crew member</h2><button class="btn sm" onclick="closeModal()">✕</button></div><div class="form-grid"><div class="field full"><label>Crew profile</label><select id="m-profile" onchange="syncCrewProfileChoice()">${profileOptions(c?.profile_id || profileForCrew(c)?.id || "")}</select></div><div class="field full"><label>Name</label><input id="m-name" value="${esc(c?.name || "")}" list="crew-name-list"><datalist id="crew-name-list">${profiles.map((p) => `<option value="${esc(p.name)}"></option>`).join("")}</datalist></div><div class="field"><label>Area</label><select id="m-area" onchange="refreshModalStations()"><option value="">Unpositioned</option>${AREA_DEFS.map((a) => `<option ${a.key === area ? "selected" : ""}>${a.key}</option>`).join("")}</select></div><div class="field"><label>Position</label><select id="m-station"></select></div><div class="field full"><label>Secondary / Flex</label><input id="m-flex" value="${esc(c?.secondary_flex || "")}"></div>${nativeTime("m-start","Shift start · 15m",c?.shift_start,15,true)}${nativeTime("m-end","Shift end · 15m",c?.shift_end,15,true)}${nativeTime("m-meal","Meal · 15m",c?.meal_time,15)}${nativeTime("m-rest1","Rest 1 · 5m",c?.rest1_time,5)}${nativeTime("m-rest2","Rest 2 · 5m",c?.rest2_time,5)}<div class="full rules" id="break-preview">Enter start/end to auto-build the break plan.</div><div class="full row"><button class="btn primary" onclick="autoFillBreaks()">Auto schedule breaks</button><span style="flex:1"></span>${c ? `<button class="btn danger" onclick="deleteCrew(${c.id})">Delete</button>` : ""}<button class="btn dark" onclick="saveCrewModal(${c?.id || "null"})">Save</button></div></div></div>`;
+    $("modal").innerHTML = `<div class="modal-box"><div class="modal-head"><h2>${c ? "Edit" : "Add"} crew member</h2><button class="btn sm" onclick="closeModal()">✕</button></div><div class="form-grid"><div class="field full"><label>Crew profile</label><select id="m-profile" onchange="syncCrewProfileChoice()">${profileOptions(c?.profile_id || profileForCrew(c)?.id || "")}</select></div><div class="field full"><label>Name</label><input id="m-name" value="${esc(c?.name || "")}" list="crew-name-list"><datalist id="crew-name-list">${profiles.map((p) => `<option value="${esc(p.name)}"></option>`).join("")}</datalist></div><div class="field"><label>Base area</label><select id="m-area" onchange="refreshModalStations()"><option value="">Unpositioned</option>${AREA_DEFS.map((a) => `<option ${a.key === area ? "selected" : ""}>${a.key}</option>`).join("")}</select></div><div class="field"><label>Base position</label><select id="m-station"></select></div><div class="field full"><label>Secondary / notes</label><input id="m-flex" value="${esc(c?.secondary_flex || "")}"></div>${nativeTime("m-start","Shift start · 15m",c?.shift_start,15,true)}${nativeTime("m-end","Shift end · 15m",c?.shift_end,15,true)}${nativeTime("m-meal","Meal · 15m",c?.meal_time,15)}${nativeTime("m-rest1","Rest 1 · 5m",c?.rest1_time,5)}${nativeTime("m-rest2","Rest 2 · 5m",c?.rest2_time,5)}<div class="full rules" id="break-preview">Enter start/end to auto-build the break plan.</div><div class="full"><label style="display:block;font-size:11px;font-weight:800;color:#9ca3ad;margin-bottom:4px">Position changes & flex coverage</label><div class="small muted">Position blocks temporarily replace the base position. Flex entries add backup coverage without moving the crew member. Leave times blank for the whole shift.</div><div id="assignment-list" class="assignment-editor">${assignments.map(assignmentRowHtml).join("")}</div><div class="assignment-actions"><button class="btn sm" type="button" onclick="addAssignmentRow('position')">+ Position block</button><button class="btn sm" type="button" onclick="addAssignmentRow('flex')">+ Flex coverage</button></div></div><div class="full row"><button class="btn primary" onclick="autoFillBreaks()">Auto schedule breaks</button><span style="flex:1"></span>${c ? `<button class="btn danger" onclick="deleteCrew(${c.id})">Delete</button>` : ""}<button class="btn dark" onclick="saveCrewModal(${c?.id || "null"})">Save</button></div></div></div>`;
     $("modal").classList.remove("hidden");
     refreshModalStations(station);
     previewBreakPlan();
 }
+
 			function modalCrewDraft() {
 				let n = $("m-name").value.trim(),
 					p = findProfileByName(n),
@@ -32,6 +89,7 @@ function openCrewModal(id = null) {
 					meal_time: $("m-meal").value,
 					rest1_time: $("m-rest1").value,
 					rest2_time: $("m-rest2").value,
+					assignments: collectAssignments(),
 				};
 			}
 			async function saveCrewModal(id) {
@@ -251,7 +309,7 @@ function openCrewModal(id = null) {
 			function crewSlot(c, pos, area, idx) {
 				let leader = isAreaLeader(c),
 					strength = positionStrength(c);
-				return `<div class="slot-row ${crewSkillClass(c)} ${leader ? "area-leader" : ""}" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropCrew(event,'${esc(area)}','${esc(pos)}',${idx})"><div class="name"><div class="crew-chip" draggable="true" ondragstart="dragStart(event,${c.id})"><span class="position-dot" style="background:${positionColour(area, pos)}"></span><span>${esc(c.name)}${leader ? '<span class="leader-star"> ★</span>' : ""}</span><span class="strength-pill">${strength.score}</span><span class="tools"><button class="leader-btn ${leader ? "active" : ""}" onclick="event.stopPropagation();toggleAreaLeader(${c.id})" title="Area leader">★</button><button class="move-btn" onclick="event.stopPropagation();openMoveModal(${c.id})" title="Move / swap">↔</button><button class="iconbtn" onclick="event.stopPropagation();openCrewModal(${c.id})" title="Edit">✎</button></span></div></div><div class="station ${stationSkillClass(c)}">${esc(pos)}</div><div class="secondary">${esc(c.secondary_flex || "")}</div><div class="shift shift-cell">${fmtTime(c.shift_start)} – ${fmtTime(c.shift_end)}</div><div class="meal break-cell">${breakButton(c, "meal_sent", c.meal_time, "Meal")}</div><div class="rest1 break-cell">${breakButton(c, "rest1_sent", c.rest1_time, "Rest")}</div><div class="rest2 break-cell">${breakButton(c, "rest2_sent", c.rest2_time, "Rest")}</div></div>`;
+				return `<div class="slot-row ${crewSkillClass(c)} ${leader ? "area-leader" : ""}" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropCrew(event,'${esc(area)}','${esc(pos)}',${idx})"><div class="name"><div class="crew-chip" draggable="true" ondragstart="dragStart(event,${c.id})"><span class="position-dot" style="background:${positionColour(area, pos)}"></span><span>${esc(c.name)}${leader ? '<span class="leader-star"> ★</span>' : ""}</span><span class="strength-pill">${strength.score}</span><span class="tools"><button class="leader-btn ${leader ? "active" : ""}" onclick="event.stopPropagation();toggleAreaLeader(${c.id})" title="Area leader">★</button><button class="move-btn" onclick="event.stopPropagation();openMoveModal(${c.id})" title="Move / swap">↔</button><button class="iconbtn" onclick="event.stopPropagation();openCrewModal(${c.id})" title="Edit">✎</button></span></div></div><div class="station ${stationSkillClass(c)}">${esc(pos)}</div><div class="secondary">${crewAssignmentSummary(c)}</div><div class="shift shift-cell">${fmtTime(c.shift_start)} – ${fmtTime(c.shift_end)}</div><div class="meal break-cell">${breakButton(c, "meal_sent", c.meal_time, "Meal")}</div><div class="rest1 break-cell">${breakButton(c, "rest1_sent", c.rest1_time, "Rest")}</div><div class="rest2 break-cell">${breakButton(c, "rest2_sent", c.rest2_time, "Rest")}</div></div>`;
 			}
 
 			function renderBuild() {
