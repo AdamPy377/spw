@@ -96,18 +96,53 @@ function spwPayload(spw = currentSpw) {
 					(m >= 18 * 60 && m < 19 * 60)
 				);
 			}
-			function coworkerClockOnAt(absMinute, c) {
+			function crewShiftBounds(c, referenceStart = null) {
+				if (!c?.shift_start || !c?.shift_end) return null;
+				let start = mins(c.shift_start);
+				if (referenceStart != null) {
+					while (start < referenceStart - 720) start += 1440;
+					while (start > referenceStart + 720) start -= 1440;
+				}
+				return { start, end: start + duration(c.shift_start, c.shift_end) };
+			}
+			function crewAreaAtAbsolute(c, absMinute, referenceStart = null) {
+				let bounds = crewShiftBounds(c, referenceStart ?? absMinute);
+				if (!bounds || absMinute < bounds.start || absMinute >= bounds.end)
+					return "";
+				let area = c.area || "";
+				for (let a of normaliseAssignments(c.assignments)) {
+					if (a.mode !== "position") continue;
+					let from = a.start ? relativeMins(a.start, c.shift_start) : 0,
+						to = a.end ? relativeMins(a.end, c.shift_start) : bounds.end - bounds.start,
+						rel = absMinute - bounds.start;
+					if (rel >= from && rel < to) area = a.area || area;
+				}
+				return area;
+			}
+			function coworkerClockOnAt(absMinute, c, area = c.area) {
 				if (!currentSpw?.crew) return false;
-				return currentSpw.crew.some(
-					(x) =>
-						x.id !== c.id &&
-						x.shift_start &&
-						Math.abs(
-							(((mins(x.shift_start) - absMinute) % 1440) +
-								1440) %
-								1440,
-						) <= 5,
+				let own = crewShiftBounds(c), reference = own?.start ?? absMinute;
+				return currentSpw.crew.some((x) => {
+					if (x === c || (c.id && x.id === c.id) || !x.shift_start) return false;
+					let b = crewShiftBounds(x, reference);
+					return b && Math.abs(b.start - absMinute) <= 5 &&
+						crewAreaAtAbsolute(x, b.start, reference) === area;
+				});
+			}
+			function breakAreaConflict(c, start, length, scheduled = []) {
+				let area = crewAreaAtAbsolute(c, start, crewShiftBounds(c)?.start);
+				if (!area) return false;
+				return scheduled.some((b) =>
+					b.crewId !== c.id && b.area === area && start < b.end && start + length > b.start,
 				);
+			}
+			function areaReliefCount(c, absMinute) {
+				let area = crewAreaAtAbsolute(c, absMinute, crewShiftBounds(c)?.start);
+				if (!area || !currentSpw?.crew) return 0;
+				return currentSpw.crew.filter((x) =>
+					x !== c && (!c.id || x.id !== c.id) &&
+					crewAreaAtAbsolute(x, absMinute, crewShiftBounds(c)?.start) === area,
+				).length;
 			}
 			function chooseBreakMinute(
 				c,
@@ -116,32 +151,39 @@ function spwPayload(spw = currentSpw) {
 				maxAbs,
 				idealAbs,
 				used = [],
+				scheduled = [],
 			) {
 				if (maxAbs < minAbs) return null;
 				let candidates = [];
 				for (
 					let t = Math.ceil(minAbs / 15) * 15;
 					t <= maxAbs;
-					t += 15
+					t += kind === "rest" ? 5 : 15
 				) {
-					let clockOn = kind === "rest" && coworkerClockOnAt(t, c);
+					let area = crewAreaAtAbsolute(c, t, crewShiftBounds(c)?.start),
+						clockOn = kind === "rest" && coworkerClockOnAt(t, c, area),
+						length = kind === "meal" ? 30 : 10;
 					let peak = isPeakAbsoluteMinute(t);
 					let sales = salesAtAbsoluteMinute(t);
 					let gapOK = used.every((u) => Math.abs(t - u) >= 60);
-					if (!gapOK) continue;
-					let score = sales;
-					score += Math.abs(t - idealAbs) * 0.35;
-					if (peak && !clockOn) score += 10000;
-					if (clockOn) score -= 5000;
+					if (!gapOK || breakAreaConflict(c, t, length, scheduled)) continue;
+					let score = kind === "rest"
+						? (t - minAbs) * 3 + sales * 0.1
+						: sales + Math.abs(t - idealAbs) * 0.35;
+					if (peak && !clockOn) score += kind === "rest" ? 500 : 10000;
+					if (areaReliefCount(c, t) === 0) score += 20000;
+					if (clockOn) score -= 25000;
 					candidates.push({ t, score });
 				}
 				if (!candidates.length) {
 					for (
 						let t = Math.ceil(minAbs / 15) * 15;
 						t <= maxAbs;
-						t += 15
+					t += kind === "rest" ? 5 : 15
 					) {
-						if (used.every((u) => Math.abs(t - u) >= 45))
+						let length = kind === "meal" ? 30 : 10;
+						if (used.every((u) => Math.abs(t - u) >= 45) &&
+							!breakAreaConflict(c, t, length, scheduled))
 							candidates.push({
 								t,
 								score:
@@ -153,7 +195,7 @@ function spwPayload(spw = currentSpw) {
 				candidates.sort((a, b) => a.score - b.score);
 				return candidates[0]?.t ?? null;
 			}
-			function breakPlan(c) {
+			function breakPlan(c, scheduled = []) {
 				let d = duration(c.shift_start, c.shift_end),
 					rests = d >= 570 ? 2 : d >= 240 ? 1 : 0,
 					meal = d > 300;
@@ -172,18 +214,26 @@ function spwPayload(spw = currentSpw) {
 				let firstAllowed = start + 60,
 					lastAllowed = end - 60,
 					used = [];
+				// First rests are planned first: they should happen as early as coverage allows.
+				if (rests >= 1) {
+					let r1Latest = meal ? Math.min(lastAllowed, start + 225) : lastAllowed,
+						r1 = c.rest1_sent && c.rest1_time
+							? start + relativeMins(c.rest1_time, c.shift_start)
+							: chooseBreakMinute(c, "rest", firstAllowed, r1Latest,
+								firstAllowed, used, scheduled);
+					if (r1 != null) {
+						plan.rest1 = addMins("00:00", r1);
+						used.push(r1);
+						if (!c.rest1_sent) scheduled.push({ crewId: c.id, area: crewAreaAtAbsolute(c, r1, start), start: r1, end: r1 + 10, kind: "rest1" });
+					}
+				}
 				if (meal) {
 					let earliest = Math.max(firstAllowed, end - 315),
 						latest = Math.min(lastAllowed - 30, start + 285);
 					let ideal = start + Math.floor(d / 2) - 15;
-					let ms = chooseBreakMinute(
-						c,
-						"meal",
-						earliest,
-						latest,
-						ideal,
-						used,
-					);
+					let ms = c.meal_sent && c.meal_time
+						? start + relativeMins(c.meal_time, c.shift_start)
+						: chooseBreakMinute(c, "meal", earliest, latest, ideal, used, scheduled);
 					if (ms == null) {
 						plan.warnings.push(
 							"No meal window fits all timing rules.",
@@ -193,36 +243,7 @@ function spwPayload(spw = currentSpw) {
 					if (ms != null) {
 						plan.meal = addMins("00:00", ms);
 						used.push(ms);
-					}
-				}
-				if (rests >= 1) {
-					let ideal =
-						meal && plan.meal
-							? start +
-								Math.floor(
-									relativeMins(plan.meal, c.shift_start) / 2,
-								)
-							: start + Math.floor(d / 2);
-					let r1max =
-						rests === 2 && plan.meal
-							? Math.min(
-									lastAllowed,
-									(mins(plan.meal) < start
-										? mins(plan.meal) + 1440
-										: mins(plan.meal)) - 60,
-								)
-							: lastAllowed;
-					let r1 = chooseBreakMinute(
-						c,
-						"rest",
-						firstAllowed,
-						r1max,
-						ideal,
-						used,
-					);
-					if (r1 != null) {
-						plan.rest1 = addMins("00:00", r1);
-						used.push(r1);
+						if (!c.meal_sent) scheduled.push({ crewId: c.id, area: crewAreaAtAbsolute(c, ms, start), start: ms, end: ms + 30, kind: "meal" });
 					}
 				}
 				if (rests >= 2) {
@@ -234,20 +255,39 @@ function spwPayload(spw = currentSpw) {
 					let min2 = Math.max(firstAllowed, mealAbs + 90);
 					let ideal =
 						mealAbs + 30 + Math.floor((end - (mealAbs + 30)) / 2);
-					let r2 = chooseBreakMinute(
-						c,
-						"rest",
-						min2,
-						lastAllowed,
-						ideal,
-						used,
-					);
+					let r2 = c.rest2_sent && c.rest2_time
+						? start + relativeMins(c.rest2_time, c.shift_start)
+						: chooseBreakMinute(c, "rest", min2, lastAllowed, ideal, used, scheduled);
 					if (r2 != null) {
 						plan.rest2 = addMins("00:00", r2);
 						used.push(r2);
+						if (!c.rest2_sent) scheduled.push({ crewId: c.id, area: crewAreaAtAbsolute(c, r2, start), start: r2, end: r2 + 10, kind: "rest2" });
 					}
 				}
 				return plan;
+			}
+			function buildShiftBreakPlan(crew = currentSpw?.crew || []) {
+				let scheduled = [], plans = new Map();
+				// Completed/in-progress breaks stay fixed and reserve their area window.
+				for (let c of crew) {
+					let start = crewShiftBounds(c)?.start;
+					if (start == null) continue;
+					for (let [sentField, timeField, length, kind] of [
+						["meal_sent", "meal_time", 30, "meal"],
+						["rest1_sent", "rest1_time", 10, "rest1"],
+						["rest2_sent", "rest2_time", 10, "rest2"],
+					]) {
+						if (!c[sentField] || !c[timeField]) continue;
+						let rel = relativeMins(c[timeField], c.shift_start), at = start + rel;
+						scheduled.push({ crewId: c.id, area: crewAreaAtAbsolute(c, at, start), start: at, end: at + length, kind });
+					}
+				}
+				// Short shifts are less flexible, so secure their early rest windows first.
+				let ordered = [...crew].sort((a, b) =>
+					duration(a.shift_start, a.shift_end) - duration(b.shift_start, b.shift_end) ||
+					mins(a.shift_start) - mins(b.shift_start));
+				for (let c of ordered) plans.set(c, breakPlan(c, scheduled));
+				return plans;
 			}
 			function validateCrew(c) {
 				let a = [],

@@ -51,7 +51,7 @@ def break_datetime(shift_date, shift_type, shift_start, break_time):
 
 def send_break_push(subscription, crew_name, label, due_dt):
     payload = {
-        "title": f"{label} Break - 5 Minutes",
+        "title": f"{label} due in 5 minutes",
         "body": f"{crew_name}'s {label.lower()} is due at {due_dt.strftime('%-I:%M %p')}.",
         "tag": f"spw-break-{crew_name}-{label}-{due_dt.isoformat()}",
         "url": "./?page=breaks",

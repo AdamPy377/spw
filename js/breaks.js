@@ -58,9 +58,9 @@
 				if (!currentSpw) return;
 				let btn = event?.currentTarget;
 				btn?.classList.add("is-saving");
-				let changed = [];
+				let changed = [], plans = buildShiftBreakPlan(currentSpw.crew);
 				for (let c of currentSpw.crew) {
-					let p = breakPlan(c);
+					let p = plans.get(c);
 					c.rest_count = p.rest_count;
 					if (!c.meal_sent)
 						c.meal_time = p.meal_required ? p.meal : "";
@@ -128,7 +128,7 @@
 						"One tap records the actual time the break was sent",
 					) +
 					breakNotificationCard() +
-					`<div class="card"><div class="row"><div class="small muted">Projected break times use current sales, peak avoidance and clock-on coverage. Recalculate after major sales changes.</div><span style="flex:1"></span><button class="btn primary" onclick="recalculateAllBreaks()">Recalculate projected breaks</button></div></div><div class="dashboard-grid"><div class="metric"><div class="n">${items.length}</div><div class="l">Scheduled breaks</div></div><div class="metric"><div class="n">${sent}</div><div class="l">Sent</div></div><div class="metric"><div class="n">${due}</div><div class="l">Due now</div></div><div class="metric"><div class="n">${late}</div><div class="l">Overdue</div></div></div><div class="card"><h2>Break queue</h2><div class="break-list">${items.length ? items.map((x) => `<div class="break-item ${x.state}"><div><b>${esc(x.c.name)}</b><div class="small muted">${esc(x.c.station || "Unpositioned")}</div></div><div class="detail"><b>${x.label}</b> · ${fmtTime(x.t)}</div><div><span class="pill ${x.state === "late" ? "bad" : x.state === "due" ? "warn" : x.state === "sent" ? "ok" : ""}">${x.state || "Upcoming"}</span></div><div class="last">${breakButton(x.c, x.f, x.t, x.label)}</div></div>`).join("") : "No scheduled breaks."}</div></div>`;
+					`<div class="card"><div class="row"><div class="small muted">Coverage comes first: same-area breaks never overlap, early rests are prioritised, and same-area clock-ons are treated as relief. Sales and peaks break ties.</div><span style="flex:1"></span><button class="btn primary" onclick="recalculateAllBreaks()">Optimise all breaks</button></div></div><div class="dashboard-grid"><div class="metric"><div class="n">${items.length}</div><div class="l">Scheduled breaks</div></div><div class="metric"><div class="n">${sent}</div><div class="l">Sent</div></div><div class="metric"><div class="n">${due}</div><div class="l">Due now</div></div><div class="metric"><div class="n">${late}</div><div class="l">Overdue</div></div></div><div class="card"><h2>Break queue</h2><div class="break-list">${items.length ? items.map((x) => `<div class="break-item ${x.state}"><div><b>${esc(x.c.name)}</b><div class="small muted">${esc(x.c.area || "Unpositioned")} · ${esc(x.c.station || "Unpositioned")}</div></div><div class="detail"><b>${x.label}</b> · ${fmtTime(x.t)}</div><div><span class="pill ${x.state === "late" ? "bad" : x.state === "due" ? "warn" : x.state === "sent" ? "ok" : ""}">${x.state || "Upcoming"}</span></div><div class="last">${breakButton(x.c, x.f, x.t, x.label)}</div></div>`).join("") : "No scheduled breaks."}</div></div>`;
 				refreshBreakNotificationStatus();
 			}
 

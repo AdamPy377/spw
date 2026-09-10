@@ -1,4 +1,12 @@
-# SPW v15.8
+# SPW v15.9
+
+## v15.9 break and crew-flow update
+
+- Rebuilt break optimisation as a shift-wide plan instead of scheduling each crew member in isolation.
+- Prevents meal/rest overlap between crew working in the same operational area.
+- Prioritises first rest breaks as early as coverage allows and recognises same-area clock-ons as direct relief (for example, a 4:00–8:00 crew member can be sent at 5:00 when their relief starts).
+- Uses actual/projected sales and peak avoidance only after coverage, timing rules and early-rest priority.
+- Respects timed position assignments when determining which area a crew member belongs to at the proposed break time.
 
 This release keeps the working storage/runtime setup from v15.7:
 
@@ -7,7 +15,7 @@ This release keeps the working storage/runtime setup from v15.7:
 - Gunicorn: 1 worker, 4 threads
 - SQLite busy timeout: 5 seconds
 
-## Changes in v15.8
+## Changes carried forward from v15.8
 
 - Removed the entire **Next steps** list from Live SPW. The single **Next action** card in the command centre remains.
 - Simplified area coverage detail to only show `Target X · Preferred Y`.
@@ -34,13 +42,13 @@ Browser/Web Push requires a secure HTTPS origin (except `localhost`). If you cur
 
 On iPhone/iPad, Web Push is intended for an installed Home Screen PWA. Install SPW to the Home Screen, open it from there, then enable notifications.
 
-## Updating from v15.7
+## Updating from v15.8
 
 Replace the files in your local Git repository with this release, then run:
 
 ```bash
 git add -A
-git commit -m "SPW v15.8 - cash editing, waste count and break notifications"
+git commit -m "SPW v15.9 - coverage-aware break optimisation"
 git push
 ```
 
@@ -53,6 +61,10 @@ Then in Portainer:
    - `position-board`
    - `position-board-notifications`
    - `position-board-backup`
-5. Close and reopen the SPW PWA/browser tab once so service-worker cache v15.8 is active.
+5. Close and reopen the SPW PWA/browser tab once so service-worker cache v15.9 is active.
+
+## Recommended crew handover workflow
+
+Keep both the outgoing and incoming crew records in Build/Edit so their actual hours remain correct. Give them the same operational area/position when the incoming crew member is a direct replacement. Live mode is already time-aware: the outgoing person disappears at clock-off and the incoming person appears at clock-on, so a direct 8:00 handover does not require two permanent rows on the operating view. Use a timed position block only when the incoming person changes position after the handover.
 
 There is no manual database move and the live database path must remain `/home/adam/docker/spw`.
