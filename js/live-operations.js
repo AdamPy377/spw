@@ -427,20 +427,29 @@
 				return "";
 			}
 			function liveBoard(spw) {
-				let onDuty = (spw.crew || []).filter((c) => {
-					let rel = getNowShiftMinute(c, spw);
-					return rel != null && rel >= 0 && rel < duration(c.shift_start, c.shift_end);
-				});
+				let previewMinute = null;
+				if (liveViewMode?.isPreview) {
+					let anchor = hourStarts(spw)[0] ?? 0,
+						starts = (spw.crew || []).map((c) => crewShiftBounds(c, anchor)?.start).filter((x) => x != null);
+					previewMinute = starts.length ? Math.min(...starts) : anchor;
+				}
+				let onDuty = (spw.crew || []).filter((c) => previewMinute != null
+					? placementAtAbsoluteMinute(c, previewMinute, spw)
+					: (() => { let rel = getNowShiftMinute(c, spw); return rel != null && rel >= 0 && rel < duration(c.shift_start, c.shift_end); })());
 				// During a short overlap, show one operational card until the outgoing crew clocks off.
-				onDuty = onDuty.filter((c) => {
+				if (previewMinute == null) onDuty = onDuty.filter((c) => {
 					let r = incomingReliefFor(c, spw);
 					if (!r) return true;
 					let rel = getNowShiftMinute(r.outgoing, spw);
 					return rel == null || rel < 0 || rel >= duration(r.outgoing.shift_start, r.outgoing.shift_end);
 				});
-				let liveSpw = { ...spw, crew: onDuty };
+				let coverageCrew = previewMinute == null ? onDuty : onDuty.map((c) => {
+					let p = placementAtAbsoluteMinute(c, previewMinute, spw);
+					return { ...c, area: p?.area || c.area, station: p?.station || c.station, assignments: [] };
+				});
+				let liveSpw = { ...spw, crew: coverageCrew };
 				return AREA_DEFS.map((a) => {
-					let ms = onDuty.map((c) => ({ c, placement: activePlacement(c, spw) }))
+					let ms = onDuty.map((c) => ({ c, placement: previewMinute != null ? placementAtAbsoluteMinute(c, previewMinute, spw) : activePlacement(c, spw) }))
 						.filter((x) => x.placement.area === a.key && x.placement.station);
 					if (!ms.length && !["Kitchen","Drive Thru","In Restaurant","McCafé","Fries","McDelivery"].includes(a.key)) return "";
 					let cov = areaCoverage(a.key, liveSpw);

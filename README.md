@@ -1,4 +1,11 @@
-# SPW v16.0
+# SPW v16.1
+
+## v16.1 Live positioning fix
+
+- Fixed upcoming Live previews filtering every crew member out because the real current time was used against a future shift.
+- Upcoming previews now show the positioning at the first crew clock-on for that shift.
+- Active shifts continue to show only crew who are genuinely on duty, preserving direct-relief swaps.
+- Live area coverage scores now use the same displayed crew set as the positioning cards.
 
 ## v16.0 direct-relief handovers
 
