@@ -417,17 +417,38 @@
 					return `<div class="crew-startoff offsoon">OFF IN ${off} MIN</div>`;
 				return `<div class="crew-startoff normal">${fmtTime(c.shift_start)} – ${fmtTime(c.shift_end)}</div>`;
 			}
+			function liveHandoverHtml(c, spw = currentSpw) {
+				let outgoing = directReliefFor(c, spw), off = minutesUntilCrewBoundary(c, "end");
+				if (outgoing && off != null && off >= 0 && off <= 30)
+					return `<div class="live-handover">↪ ${esc(c.name)} → ${esc(outgoing.incoming.name)} at ${fmtTime(addMins("00:00", outgoing.at))}</div>`;
+				let incoming = incomingReliefFor(c, spw), started = minutesUntilCrewBoundary(c, "start");
+				if (incoming && started != null && started <= 0 && started >= -15)
+					return `<div class="live-handover complete">✓ Relieved ${esc(incoming.outgoing.name)}</div>`;
+				return "";
+			}
 			function liveBoard(spw) {
+				let onDuty = (spw.crew || []).filter((c) => {
+					let rel = getNowShiftMinute(c, spw);
+					return rel != null && rel >= 0 && rel < duration(c.shift_start, c.shift_end);
+				});
+				// During a short overlap, show one operational card until the outgoing crew clocks off.
+				onDuty = onDuty.filter((c) => {
+					let r = incomingReliefFor(c, spw);
+					if (!r) return true;
+					let rel = getNowShiftMinute(r.outgoing, spw);
+					return rel == null || rel < 0 || rel >= duration(r.outgoing.shift_start, r.outgoing.shift_end);
+				});
+				let liveSpw = { ...spw, crew: onDuty };
 				return AREA_DEFS.map((a) => {
-					let ms = (spw.crew || []).map((c) => ({ c, placement: activePlacement(c, spw) }))
+					let ms = onDuty.map((c) => ({ c, placement: activePlacement(c, spw) }))
 						.filter((x) => x.placement.area === a.key && x.placement.station);
 					if (!ms.length && !["Kitchen","Drive Thru","In Restaurant","McCafé","Fries","McDelivery"].includes(a.key)) return "";
-					let cov = areaCoverage(a.key, spw);
+					let cov = areaCoverage(a.key, liveSpw);
 					return `<div class="live-area"><div class="live-title"><span>${a.key}<small class="area-demand-detail">${esc(cov.detail)}</small></span><span class="area-score ${cov.state}" title="${esc(cov.detail)}">${cov.score}/100 · ${cov.state === "strong" ? "Strong" : cov.state === "thin" ? "Thin" : "Critical"}</span></div>${ms.map(({c, placement}) => {
 						let virtual = { ...c, area: placement.area, station: placement.station }, strength = positionStrength(virtual), leader = isAreaLeader(c);
 						let activeFlex = activeFlexAssignments(c, spw).map((x) => x.area).filter((x) => x !== placement.area);
 						let flexText = activeFlex.length ? `<div class="small muted" style="margin-top:3px">Flex: ${esc([...new Set(activeFlex)].join(", "))}</div>` : "";
-						return `<div class="live-card ${activeBreak(c) ? "onbreak" : ""} ${crewSkillClass(virtual)} ${leader ? "area-leader" : ""}" data-live-crew="${c.id}"><div><div class="name">${esc(c.name)}${leader ? '<span class="leader-star" title="Area leader">★</span>' : ""}<span class="strength-pill">${strength.score}/100</span></div><span class="station-badge" style="background:${positionColour(placement.area, placement.station)};color:#111">${esc(placement.station)}</span>${placement.scheduled ? '<span class="pill info" style="margin-left:5px">Scheduled move</span>' : ""}${clockStatusHtml(c)}${c.secondary_flex ? `<div class="small muted" style="margin-top:3px">${esc(c.secondary_flex)}</div>` : ""}${flexText}<div class="mobile-action-row"><button class="move-btn" onclick="openMoveModal(${c.id})" title="Move or swap">↔</button><button class="leader-btn ${leader ? "active" : ""}" onclick="toggleAreaLeader(${c.id})" title="Toggle area leader">★</button></div></div><div class="live-breaks">${breakButton(c, "meal_sent", c.meal_time, "Meal")}${breakButton(c, "rest1_sent", c.rest1_time, "Rest")}${breakButton(c, "rest2_sent", c.rest2_time, "Rest")}</div></div>`;
+						return `<div class="live-card ${activeBreak(c) ? "onbreak" : ""} ${crewSkillClass(virtual)} ${leader ? "area-leader" : ""}" data-live-crew="${c.id}"><div><div class="name">${esc(c.name)}${leader ? '<span class="leader-star" title="Area leader">★</span>' : ""}<span class="strength-pill">${strength.score}/100</span></div><span class="station-badge" style="background:${positionColour(placement.area, placement.station)};color:#111">${esc(placement.station)}</span>${placement.scheduled ? '<span class="pill info" style="margin-left:5px">Scheduled move</span>' : ""}${clockStatusHtml(c)}${liveHandoverHtml(c, spw)}${c.secondary_flex ? `<div class="small muted" style="margin-top:3px">${esc(c.secondary_flex)}</div>` : ""}${flexText}<div class="mobile-action-row"><button class="move-btn" onclick="openMoveModal(${c.id})" title="Move or swap">↔</button><button class="leader-btn ${leader ? "active" : ""}" onclick="toggleAreaLeader(${c.id})" title="Toggle area leader">★</button></div></div><div class="live-breaks">${breakButton(c, "meal_sent", c.meal_time, "Meal")}${breakButton(c, "rest1_sent", c.rest1_time, "Rest")}${breakButton(c, "rest2_sent", c.rest2_time, "Rest")}</div></div>`;
 					}).join("")}</div>`;
 				}).join("");
 			}
@@ -594,4 +615,3 @@
 					.join("");
 			}
 			setInterval(refreshDynamicTimeUi, 30000);
-

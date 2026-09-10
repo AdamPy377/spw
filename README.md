@@ -1,4 +1,13 @@
-# SPW v15.9
+# SPW v16.0
+
+## v16.0 direct-relief handovers
+
+- Detects direct relief when an incoming crew member starts within 15 minutes of the outgoing crew member finishing in the same area and position.
+- Live mode now shows only crew who are actually on duty.
+- During a short overlap, the outgoing crew member remains the single active position card and displays the incoming relief.
+- Shows the handover from 30 minutes before clock-off and a completed-relief message for 15 minutes after the incoming crew member starts.
+- Adds a Whole shift/time snapshot selector to Build/Edit. Snapshot views show only crew working at that time while preserving every roster record.
+- Timed position assignments are respected when detecting relief and rendering snapshots.
 
 ## v15.9 break and crew-flow update
 
@@ -42,13 +51,13 @@ Browser/Web Push requires a secure HTTPS origin (except `localhost`). If you cur
 
 On iPhone/iPad, Web Push is intended for an installed Home Screen PWA. Install SPW to the Home Screen, open it from there, then enable notifications.
 
-## Updating from v15.8
+## Updating from v15.9
 
 Replace the files in your local Git repository with this release, then run:
 
 ```bash
 git add -A
-git commit -m "SPW v15.9 - coverage-aware break optimisation"
+git commit -m "SPW v16.0 - direct-relief handovers"
 git push
 ```
 
@@ -61,7 +70,7 @@ Then in Portainer:
    - `position-board`
    - `position-board-notifications`
    - `position-board-backup`
-5. Close and reopen the SPW PWA/browser tab once so service-worker cache v15.9 is active.
+5. Close and reopen the SPW PWA/browser tab once so service-worker cache v16.0 is active.
 
 ## Recommended crew handover workflow
 

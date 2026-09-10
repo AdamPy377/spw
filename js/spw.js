@@ -16,7 +16,57 @@ function normaliseLoadedSpw(spw, type) {
     spw.cash = normaliseCash(spw.cash);
     return spw;
 }
+			let buildCrewViewMinute = null;
+			const DIRECT_RELIEF_WINDOW = 15;
+			function placementAtAbsoluteMinute(c, absMinute, spw = currentSpw) {
+				let starts = hourStarts(spw || {}), anchor = starts[0] ?? crewShiftBounds(c)?.start ?? absMinute,
+					bounds = crewShiftBounds(c, anchor);
+				if (!bounds || absMinute < bounds.start || absMinute >= bounds.end) return null;
+				let placement = { area: c.area || "", station: c.station || "", scheduled: false };
+				for (let a of normaliseAssignments(c.assignments)) {
+					if (a.mode !== "position") continue;
+					let from = a.start ? relativeMins(a.start, c.shift_start) : 0,
+						to = a.end ? relativeMins(a.end, c.shift_start) : bounds.end - bounds.start,
+						rel = absMinute - bounds.start;
+					if (rel >= from && rel < to) placement = { area: a.area || placement.area, station: a.station || placement.station, scheduled: true };
+				}
+				return placement;
+			}
+			function directReliefFor(outgoing, spw = currentSpw) {
+				if (!outgoing || !spw?.crew?.length) return null;
+				let anchor = hourStarts(spw)[0] ?? mins(outgoing.shift_start), outBounds = crewShiftBounds(outgoing, anchor);
+				if (!outBounds) return null;
+				let oldPlacement = placementAtAbsoluteMinute(outgoing, outBounds.end - 1, spw);
+				if (!oldPlacement?.area || !oldPlacement?.station) return null;
+				return spw.crew.map((incoming) => {
+					if (incoming === outgoing || (outgoing.id && incoming.id === outgoing.id)) return null;
+					let inBounds = crewShiftBounds(incoming, anchor);
+					if (!inBounds || Math.abs(inBounds.start - outBounds.end) > DIRECT_RELIEF_WINDOW) return null;
+					let p = placementAtAbsoluteMinute(incoming, inBounds.start, spw);
+					if (p?.area !== oldPlacement.area || p?.station !== oldPlacement.station) return null;
+					return { outgoing, incoming, at: outBounds.end, gap: inBounds.start - outBounds.end, area: oldPlacement.area, station: oldPlacement.station };
+				}).filter(Boolean).sort((a, b) => Math.abs(a.gap) - Math.abs(b.gap) || a.gap - b.gap)[0] || null;
+			}
+			function incomingReliefFor(incoming, spw = currentSpw) {
+				return (spw?.crew || []).map((c) => directReliefFor(c, spw)).find((r) => r?.incoming === incoming || (incoming.id && r?.incoming?.id === incoming.id)) || null;
+			}
+			function buildCrewAt(area, station, spw = currentSpw) {
+				if (buildCrewViewMinute == null) return (spw?.crew || []).filter((c) => c.area === area && c.station === station);
+				return (spw?.crew || []).filter((c) => { let p = placementAtAbsoluteMinute(c, buildCrewViewMinute, spw); return p?.area === area && p?.station === station; });
+			}
+			function buildCrewViewOptions(spw = currentSpw) {
+				let starts = hourStarts(spw || {}), anchor = starts[0] ?? 0, times = new Set(starts);
+				for (let c of spw?.crew || []) { let b = crewShiftBounds(c, anchor); if (b) { times.add(b.start); times.add(b.end); } }
+				let options = [...times].sort((a, b) => a - b).map((t) => `<option value="${t}" ${buildCrewViewMinute === t ? "selected" : ""}>${fmtTime(addMins("00:00", t))}</option>`).join("");
+				return `<div class="card crew-time-view"><div><b>Crew view</b><div class="small muted">Use a time snapshot to see each direct swap as one active position. Snapshots are view-only; return to Whole shift to drag crew.</div></div><select onchange="setBuildCrewView(this.value)"><option value="" ${buildCrewViewMinute == null ? "selected" : ""}>Whole shift</option>${options}</select></div>`;
+			}
+			function setBuildCrewView(value) { buildCrewViewMinute = value === "" ? null : Number(value); rerenderLocalPreserveScroll("build"); }
+			function crewHandoverBadge(c, spw = currentSpw) {
+				let r = directReliefFor(c, spw);
+				return r ? `<span class="handover-tag">${esc(c.name)} → ${esc(r.incoming.name)} at ${fmtTime(addMins("00:00", r.at))}</span>` : "";
+			}
 			async function loadSpw(date, type, ensure = false) {
+				buildCrewViewMinute = null;
 				if (ensure)
 					await api("/api/spw/ensure", {
 						method: "POST",
@@ -609,16 +659,16 @@ function spwPayload(spw = currentSpw) {
 				return html;
 			}
 			function crewAt(area, pos) {
-				return currentSpw.crew
-					.filter((c) => c.area === area && c.station === pos)
+				return buildCrewAt(area, pos, currentSpw)
 					.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 			}
 			function slotRows(area) {
 				return area.positions
 					.map((pos, idx) => {
 						let members = crewAt(area.key, pos);
+						let dropAttrs = buildCrewViewMinute == null ? `ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropCrew(event,'${esc(area.key)}','${esc(pos)}',${idx})"` : "";
 						if (!members.length)
-							return `<div class="slot-row" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropCrew(event,'${esc(area.key)}','${esc(pos)}',${idx})"><div class="name"><span class="empty-slot">Drop crew here</span></div><div class="station">${esc(pos)}</div><div class="secondary"></div><div class="shift shift-cell"></div><div class="meal break-cell"></div><div class="rest1 break-cell"></div><div class="rest2 break-cell"></div></div>`;
+							return `<div class="slot-row" ${dropAttrs}><div class="name"><span class="empty-slot">${buildCrewViewMinute == null ? "Drop crew here" : "Unfilled at this time"}</span></div><div class="station">${esc(pos)}</div><div class="secondary"></div><div class="shift shift-cell"></div><div class="meal break-cell"></div><div class="rest1 break-cell"></div><div class="rest2 break-cell"></div></div>`;
 						return members
 							.map((c) => crewSlot(c, pos, area.key, idx))
 							.join("");
@@ -630,15 +680,13 @@ function spwPayload(spw = currentSpw) {
 					(a) =>
 						`<div class="area-sheet"><div class="area-side">${esc(a.key)}</div><div class="area-body"><div class="area-head"><div>Name</div><div>Station</div><div>Secondary / Flex</div><div>Shift</div><div>Meal</div><div>Rest</div><div>Rest</div></div>${build ? slotRows(a) : viewAreaRows(spw, a)}</div></div>`,
 				).join("");
+				let visibleCrew = buildCrewViewMinute == null ? spw.crew : spw.crew.filter((c) => placementAtAbsoluteMinute(c, buildCrewViewMinute, spw));
 				let unpos = build
-					? spw.crew.filter(
-							(c) =>
-								!c.station ||
-								!AREA_DEFS.some(
-									(a) =>
-										a.key === c.area &&
-										a.positions.includes(c.station),
-								),
+					? visibleCrew.filter(
+							(c) => {
+								let p = buildCrewViewMinute == null ? { area: c.area, station: c.station } : placementAtAbsoluteMinute(c, buildCrewViewMinute, spw);
+								return !p?.station || !AREA_DEFS.some((a) => a.key === p.area && a.positions.includes(p.station));
+							},
 						)
 					: [];
 				return `<div class="worksheet">${areas}${build ? `<div class="card" style="margin:10px 0 0"><h2>Unpositioned crew</h2><div class="unpositioned">${unpos.length ? unpos.map((c) => `<div class="crew-chip" draggable="true" ondragstart="dragStart(event,${c.id})"><span>${esc(c.name)}</span><button class="iconbtn" onclick="openCrewModal(${c.id})">✎</button></div>`).join("") : '<span class="muted small">Everyone is positioned.</span>'}</div></div>` : ""}</div>`;

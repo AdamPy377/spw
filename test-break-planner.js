@@ -38,3 +38,21 @@ assert.equal(plans.get(sent).rest1, "13:00", "sent rests remain fixed");
 assert.notEqual(plans.get(other).rest1, "13:00", "sent rests reserve their area window");
 
 console.log("break planner tests passed");
+
+const out = { id: 20, name: "Out", area: "Kitchen", station: "Grill", shift_start: "16:00", shift_end: "20:00", assignments: [] };
+const exact = { id: 21, name: "Exact", area: "Kitchen", station: "Grill", shift_start: "20:00", shift_end: "00:00", assignments: [] };
+const wrong = { id: 22, name: "Wrong position", area: "Kitchen", station: "Fried", shift_start: "20:00", shift_end: "00:00", assignments: [] };
+context.currentSpw.crew = [out, exact, wrong];
+assert.equal(context.directReliefFor(out).incoming.id, exact.id, "exact same-position swap is detected");
+
+exact.shift_start = "20:15";
+assert.equal(context.directReliefFor(out).incoming.id, exact.id, "15-minute relief gap is accepted");
+exact.shift_start = "20:16";
+assert.equal(context.directReliefFor(out), null, "relief outside 15 minutes is rejected");
+
+const overnightOut = { id: 23, name: "Night out", area: "Drive Thru", station: "Cash", shift_start: "20:00", shift_end: "00:00", assignments: [] };
+const overnightIn = { id: 24, name: "Night in", area: "Drive Thru", station: "Cash", shift_start: "00:00", shift_end: "04:00", assignments: [] };
+context.currentSpw.crew = [overnightOut, overnightIn];
+assert.equal(context.directReliefFor(overnightOut).incoming.id, overnightIn.id, "midnight relief is detected across dates");
+
+console.log("handover tests passed");

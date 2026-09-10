@@ -59,7 +59,8 @@ function crewAssignmentSummary(c) {
         const prefix = a.mode === "position" ? "→" : "Flex";
         bits.push(`<span class="${cls}">${esc(`${time}${prefix} ${a.area}${a.station ? ` · ${a.station}` : ""}`)}</span>`);
     }
-    return bits.length ? `<div class="assignment-summary">${bits.join("")}</div>` : "";
+    const handover = crewHandoverBadge(c);
+    return bits.length || handover ? `<div class="assignment-summary">${bits.join("")}${handover}</div>` : "";
 }
 function openCrewModal(id = null) {
     if (!currentSpw) return;
@@ -308,8 +309,8 @@ function openCrewModal(id = null) {
 			}
 			function crewSlot(c, pos, area, idx) {
 				let leader = isAreaLeader(c),
-					strength = positionStrength(c);
-				return `<div class="slot-row ${crewSkillClass(c)} ${leader ? "area-leader" : ""}" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropCrew(event,'${esc(area)}','${esc(pos)}',${idx})"><div class="name"><div class="crew-chip" draggable="true" ondragstart="dragStart(event,${c.id})"><span class="position-dot" style="background:${positionColour(area, pos)}"></span><span>${esc(c.name)}${leader ? '<span class="leader-star"> ★</span>' : ""}</span><span class="strength-pill">${strength.score}</span><span class="tools"><button class="leader-btn ${leader ? "active" : ""}" onclick="event.stopPropagation();toggleAreaLeader(${c.id})" title="Area leader">★</button><button class="move-btn" onclick="event.stopPropagation();openMoveModal(${c.id})" title="Move / swap">↔</button><button class="iconbtn" onclick="event.stopPropagation();openCrewModal(${c.id})" title="Edit">✎</button></span></div></div><div class="station ${stationSkillClass(c)}">${esc(pos)}</div><div class="secondary">${crewAssignmentSummary(c)}</div><div class="shift shift-cell">${fmtTime(c.shift_start)} – ${fmtTime(c.shift_end)}</div><div class="meal break-cell">${breakButton(c, "meal_sent", c.meal_time, "Meal")}</div><div class="rest1 break-cell">${breakButton(c, "rest1_sent", c.rest1_time, "Rest")}</div><div class="rest2 break-cell">${breakButton(c, "rest2_sent", c.rest2_time, "Rest")}</div></div>`;
+					strength = positionStrength(c), editable = buildCrewViewMinute == null;
+				return `<div class="slot-row ${crewSkillClass(c)} ${leader ? "area-leader" : ""}" ${editable ? `ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropCrew(event,'${esc(area)}','${esc(pos)}',${idx})"` : ""}><div class="name"><div class="crew-chip" draggable="${editable}" ${editable ? `ondragstart="dragStart(event,${c.id})"` : ""}><span class="position-dot" style="background:${positionColour(area, pos)}"></span><span>${esc(c.name)}${leader ? '<span class="leader-star"> ★</span>' : ""}</span><span class="strength-pill">${strength.score}</span><span class="tools"><button class="leader-btn ${leader ? "active" : ""}" onclick="event.stopPropagation();toggleAreaLeader(${c.id})" title="Area leader">★</button><button class="move-btn" onclick="event.stopPropagation();openMoveModal(${c.id})" title="Move / swap">↔</button><button class="iconbtn" onclick="event.stopPropagation();openCrewModal(${c.id})" title="Edit">✎</button></span></div></div><div class="station ${stationSkillClass(c)}">${esc(pos)}</div><div class="secondary">${crewAssignmentSummary(c)}</div><div class="shift shift-cell">${fmtTime(c.shift_start)} – ${fmtTime(c.shift_end)}</div><div class="meal break-cell">${breakButton(c, "meal_sent", c.meal_time, "Meal")}</div><div class="rest1 break-cell">${breakButton(c, "rest1_sent", c.rest1_time, "Rest")}</div><div class="rest2 break-cell">${breakButton(c, "rest2_sent", c.rest2_time, "Rest")}</div></div>`;
 			}
 
 			function renderBuild() {
@@ -328,6 +329,7 @@ function openCrewModal(id = null) {
 						"Drag on desktop, or tap ↔ to move/swap on phone",
 					) +
 					buildPicker() +
+					buildCrewViewOptions(currentSpw) +
 					`<div class="card"><div class="row"><div class="field"><label>Shift Manager</label><input id="manager" value="${esc(currentSpw.shift_manager || "")}" oninput="syncHeaderFromDom();scheduleSave()"></div><button class="btn primary" onclick="openCrewModal()">+ Add crew</button></div></div><div class="card"><h2>Sales / Crew Hours / SPCH</h2><div class="small muted" style="margin-bottom:8px">Actual sales are best entered on Shift Results. Current hour is highlighted.</div><div id="sales-zone">${salesTable(currentSpw, true)}</div></div>${worksheet(currentSpw, true)}<div class="card"><h2>Area coverage</h2><div class="dashboard-grid">${AREA_DEFS.map(
 						(a) => {
 							let c = areaCoverage(a.key);
@@ -337,4 +339,3 @@ function openCrewModal(id = null) {
 						"",
 					)}</div></div><div class="card"><h2>Area goals</h2><div class="small muted">Reference targets for the shift.</div></div>${goalsEditor()}<div class="card"><h2>Shift Notes</h2><textarea id="notes" oninput="syncHeaderFromDom();scheduleSave()">${esc(currentSpw.notes || "")}</textarea></div>`;
 			}
-

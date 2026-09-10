@@ -1,4 +1,4 @@
-const CACHE_NAME = "spw-v15.9";
+const CACHE_NAME = "spw-v16.0";
 const SHELL_FILES = [
   "./",
   "./index.html",
