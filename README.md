@@ -1,4 +1,11 @@
-# SPW v16.1
+# SPW v16.2
+
+## v16.2 upcoming uncovered positions
+
+- Shows an incoming crew member 30 minutes before clock-on when their assigned position is currently empty.
+- Marks the card as Upcoming with a live start countdown; the person does not count toward active area coverage until clock-on.
+- Keeps the existing compact handover instead when an outgoing crew member still occupies the position.
+- Live positioning automatically refreshes when a crew member enters the 30-minute window, clocks on or clocks off.
 
 ## v16.1 Live positioning fix
 

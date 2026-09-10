@@ -183,6 +183,10 @@ function liveTasksCard() {
 			}
 			function openLoadedPositioning() {
 				if (!currentSpw) return;
+				if (currentPage === "current" && liveRosterSignature(liveRosterState(currentSpw)) !== lastLiveRosterSignature) {
+					paintCurrent(currentSpw);
+					return;
+				}
 				showPage("build");
 			}
 
@@ -305,4 +309,3 @@ function liveTasksCard() {
 			}
 
 			
-

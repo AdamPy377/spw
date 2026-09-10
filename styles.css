@@ -2340,6 +2340,8 @@
 .handover-tag{display:inline-block;background:#e0f2fe;color:#075985;border:1px solid #7dd3fc;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:800}
 .live-handover{margin-top:6px;padding:5px 8px;border-radius:8px;background:#e0f2fe;color:#075985;font-size:12px;font-weight:800}
 .live-handover.complete{background:#dcfce7;color:#166534}
+.live-card.upcoming-crew{opacity:.78;border-style:dashed;background:linear-gradient(90deg,rgba(14,165,233,.08),transparent)}
+.live-card.upcoming-crew .crew-startoff{color:#38bdf8;font-weight:900}
 @media(max-width:700px){.crew-time-view{align-items:flex-start;flex-direction:column}.crew-time-view select{width:100%}}
 .cash-history-actions {
   display: flex;
